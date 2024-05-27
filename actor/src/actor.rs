@@ -17,6 +17,8 @@ use tokio::sync::broadcast::{
     Receiver as EventReceiver, Sender as EventSender,
 };
 
+use tokio_util::sync::CancellationToken;
+
 use async_trait::async_trait;
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -33,6 +35,12 @@ pub struct ActorContext<A: Actor> {
     system: ActorSystem,
     /// The event sender.
     event_sender: EventSender<A::Event>,
+    /// The actor lifecycle.
+    lifecycle: ActorLifecycle,
+    /// Error in the actor.
+    error: Option<Error>,
+    /// Cancellation token.
+    token: CancellationToken,
     /// Phantom data for the actor type.
     phantom_a: PhantomData<A>,
 }
@@ -44,6 +52,7 @@ impl<A: Actor> ActorContext<A> {
     ///
     /// * `path` - The path of the actor.
     /// * `system` - The actor system.
+    /// * `token` - The cancellation token.
     /// * `event_sender` - The event sender.
     ///
     /// # Returns
@@ -53,12 +62,16 @@ impl<A: Actor> ActorContext<A> {
     pub fn new(
         path: ActorPath,
         system: ActorSystem,
+        token: CancellationToken,
         event_sender: EventSender<<A as Actor>::Event>,
     ) -> Self {
         Self {
             path,
             system,
             event_sender,
+            lifecycle: ActorLifecycle::Created,
+            error: None,
+            token,
             phantom_a: PhantomData,
         }
     }
@@ -128,13 +141,13 @@ impl<A: Actor> ActorContext<A> {
     ///
     /// Returns an error if the child actor could not be created.
     ///
-    pub async fn create_child(
+    pub async fn create_child<C>(
         &self,
         name: &str,
-        actor: A,
-    ) -> Result<ActorRef<A>, Error>
+        actor: C,
+    ) -> Result<ActorRef<C>, Error>
     where
-        A: Actor + Handler<A>,
+        C: Actor + Handler<C>,
     {
         let path = self.path.clone() / name;
         self.system.create_actor_path(path, actor).await
@@ -196,10 +209,81 @@ impl<A: Actor> ActorContext<A> {
         let path = self.path.clone() / name;
         self.system.stop_actor(&path).await;
     }
+
+    /// Returns the lifecycle state of the actor.
+    /// The lifecycle state can be one of the following:
+    /// - `ActorLifecycle::Started` - The actor is started.
+    /// - `ActorLifecycle::Faulty` - The actor is faulty.
+    /// - `ActorLifecycle::Stopped` - The actor is stopped.
+    /// - `ActorLifecycle::Terminated` - The actor is terminated.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns the lifecycle state of the actor.
+    /// 
+    pub fn state(&self) -> &ActorLifecycle {
+        &self.lifecycle
+    }
+
+    /// Sets the lifecycle state of the actor.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `state` - The lifecycle state of the actor.
+    /// 
+    pub fn set_state(&mut self, state: ActorLifecycle) {
+        self.lifecycle = state;
+    }
+
+    /// Returns the error of the actor.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns the error of the actor.
+    /// 
+    pub fn error(&self) -> Option<Error> {
+        self.error.clone().or(None)
+    }
+
+    /// Sets the error of the actor.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `error` - The error of the actor.
+    /// 
+    pub fn failed(&mut self, error: Error) {
+        self.error = Some(error);
+        self.token.cancel();
+    }
+
+    /// Sets the cancelation token.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `token` - The cancelation token.
+    /// 
+    pub fn set_token(&mut self, token: CancellationToken) {
+        self.token = token;
+    }
 }
 
-#[async_trait]
+/// The `Actor` lifecycle enum
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActorLifecycle {
+    /// The actor is created.
+    Created,
+    /// The actor is started.
+    Started,
+    /// The actor is failed.
+    Faulty,
+    /// The actor is stopped.
+    Stopped,
+    /// The actor is terminated.
+    Terminated,
+}
+
 /// The `Actor` trait is the main trait that actors must implement.
+#[async_trait]
 pub trait Actor: Send + Sync + Sized + 'static {
     /// The `Message` type is the type of the messages that the actor can receive.
     type Message: Message;

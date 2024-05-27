@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::path::ActorPath;
 
 /// Error type for the actor system.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Clone, Debug, Error, PartialEq)]
 pub enum Error {
     /// An error occurred while sending a message to an actor.
     #[error("An error occurred while sending a message to actor: {0}.")]

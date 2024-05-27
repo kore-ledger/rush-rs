@@ -69,11 +69,11 @@ impl ActorSystem {
             return Err(Error::Exists(path));
         }
 
-        // Create the actor runner and start it.
+        // Create the actor runner and init it.
         let system = self.clone();
         let (mut runner, actor_ref) = ActorRunner::create(path, actor);
         tokio::spawn(async move {
-            runner.start(system).await;
+            runner.init(system).await;
         });
 
         // Store the actor reference.
