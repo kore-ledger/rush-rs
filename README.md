@@ -1,5 +1,9 @@
 # Rush
 
+![GitHub Tag](https://img.shields.io/github/v/tag/kore-ledger/rush-rs?label=rush-rs)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/kore-ledger/rush-rs/rust.yml)
+![GitHub License](https://img.shields.io/github/license/kore-ledger/rush-rs)
+
 **Rush** is a set of libraries and tools for building concurrent systems using [actor model](https://en.wikipedia.org/wiki/Actor_model) as described by Carl Hewitt in 1973. It has been developed from a fork of Tiny Tokio Actors, to include some of our specific needs, such as persistent actors. Also it is inspired by [Akka](https://akka.io/) and [Erlang](https://www.erlang.org/).
 
 The actor model is a model of concurrent computation that treats "actors" as the universal primitives of concurrent computation. In response to a message that it receives, an actor can:
