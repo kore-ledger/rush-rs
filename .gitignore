@@ -1,0 +1,13 @@
+# File system
+.DS_Store
+desktop.ini
+
+# IDE
+.vscode
+.idea
+.project
+
+# Build
+/target
+/debug
+Cargo.lock
