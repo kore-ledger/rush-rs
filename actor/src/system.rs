@@ -39,10 +39,7 @@ impl ActorSystem {
     ///
     /// Returns the actor reference.
     ///
-    pub async fn get_actor<A>(
-        &self,
-        path: &ActorPath,
-    ) -> Option<ActorRef<A>>
+    pub async fn get_actor<A>(&self, path: &ActorPath) -> Option<ActorRef<A>>
     where
         A: Actor + Handler<A>,
     {
@@ -192,4 +189,3 @@ impl ActorSystem {
         children
     }
 }
-

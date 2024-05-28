@@ -163,9 +163,9 @@ impl<A: Actor> ActorContext<A> {
     ///
     /// Returns the actor reference of the child actor if it exists.
     ///
-    pub async fn get_child(&self, name: &str) -> Option<ActorRef<A>>
+    pub async fn get_child<C>(&self, name: &str) -> Option<ActorRef<C>>
     where
-        A: Actor + Handler<A>,
+        C: Actor + Handler<C>,
     {
         let path = self.path.clone() / name;
         self.system.get_actor(&path).await
@@ -186,14 +186,14 @@ impl<A: Actor> ActorContext<A> {
     ///
     /// Returns an error if the child actor could not be created.
     ///
-    pub async fn get_or_create_child<F>(
+    pub async fn get_or_create_child<C, F>(
         &self,
         name: &str,
         actor_fn: F,
-    ) -> Result<ActorRef<A>, Error>
+    ) -> Result<ActorRef<C>, Error>
     where
-        A: Actor + Handler<A>,
-        F: FnOnce() -> A,
+        C: Actor + Handler<C>,
+        F: FnOnce() -> C,
     {
         let path = self.path.clone() / name;
         self.system.get_or_create_actor_path(&path, actor_fn).await
@@ -213,55 +213,55 @@ impl<A: Actor> ActorContext<A> {
     /// Returns the lifecycle state of the actor.
     /// The lifecycle state can be one of the following:
     /// - `ActorLifecycle::Started` - The actor is started.
-    /// - `ActorLifecycle::Faulty` - The actor is faulty.
+    /// - `ActorLifecycle::Failed` - The actor is faulty.
     /// - `ActorLifecycle::Stopped` - The actor is stopped.
     /// - `ActorLifecycle::Terminated` - The actor is terminated.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Returns the lifecycle state of the actor.
-    /// 
+    ///
     pub fn state(&self) -> &ActorLifecycle {
         &self.lifecycle
     }
 
     /// Sets the lifecycle state of the actor.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `state` - The lifecycle state of the actor.
-    /// 
+    ///
     pub fn set_state(&mut self, state: ActorLifecycle) {
         self.lifecycle = state;
     }
 
     /// Returns the error of the actor.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Returns the error of the actor.
-    /// 
+    ///
     pub fn error(&self) -> Option<Error> {
         self.error.clone().or(None)
     }
 
     /// Sets the error of the actor.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `error` - The error of the actor.
-    /// 
+    ///
     pub fn failed(&mut self, error: Error) {
         self.error = Some(error);
         self.token.cancel();
     }
 
     /// Sets the cancelation token.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `token` - The cancelation token.
-    /// 
+    ///
     pub fn set_token(&mut self, token: CancellationToken) {
         self.token = token;
     }
@@ -275,7 +275,7 @@ pub enum ActorLifecycle {
     /// The actor is started.
     Started,
     /// The actor is failed.
-    Faulty,
+    Failed,
     /// The actor is stopped.
     Stopped,
     /// The actor is terminated.
@@ -373,7 +373,6 @@ pub trait Response: Debug + Send + Sync + 'static {}
 /// if necessary, respond to them.
 #[async_trait]
 pub trait Handler<A: Actor>: Send + Sync {
-
     /// Handles a message.
     ///
     /// # Arguments
@@ -548,7 +547,6 @@ mod test {
 
     #[async_trait]
     impl Handler<TestActor> for TestActor {
-
         async fn handle(
             &mut self,
             msg: TestMessage,
@@ -575,5 +573,4 @@ mod test {
         let event = recv.recv().await.unwrap();
         assert_eq!(event.0, 20);
     }
-
 }

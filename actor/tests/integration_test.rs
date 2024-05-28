@@ -1,13 +1,17 @@
 // Integrations tests for the actor module
 
-use actor::{Actor, ActorSystem, ActorContext, Handler, Message, Response, Event};
+use actor::{
+    Actor, ActorContext, ActorPath, ActorRef, ActorSystem, Error, Event, Handler, Message, Response
+};
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+use tracing_test::traced_test;
 
 // Defines parent actor
 #[derive(Debug, Clone)]
 pub struct TestActor {
-    pub state: usize
+    pub state: usize,
 }
 
 // Defines parent command
@@ -45,30 +49,39 @@ impl Actor for TestActor {
     type Response = TestResponse;
     type Event = TestEvent;
 
+    async fn pre_start(&mut self, ctx: &ActorContext<Self>) -> Result<(), Error> {
+        let child = ChildActor { state: 0 };
+        ctx.create_child("child", child).await?;
+        Ok(())
+    }
 }
 
 // Implements handler for parent actor.
 #[async_trait]
 impl Handler<TestActor> for TestActor {
-    async fn handle(&mut self, message: TestCommand, ctx: &mut ActorContext<TestActor>) -> TestResponse {
+    async fn handle(
+        &mut self,
+        message: TestCommand,
+        ctx: &mut ActorContext<TestActor>,
+    ) -> TestResponse {
         match message {
             TestCommand::Increment(value) => {
                 self.state += value;
                 ctx.emit(TestEvent(self.state)).await.unwrap();
+                let child: ActorRef<ChildActor> = ctx.get_child("child").await.unwrap();
+                child.tell(ChildCommand::SetState(self.state)).await.unwrap();
                 TestResponse::None
-            },
+            }
             TestCommand::Decrement(value) => {
                 self.state -= value;
                 ctx.emit(TestEvent(self.state)).await.unwrap();
                 TestResponse::None
-            },
-            TestCommand::GetState => {
-                TestResponse::State(self.state)
             }
+            TestCommand::GetState => TestResponse::State(self.state),
         }
     }
 }
-/* 
+
 // Defines child actor.
 #[derive(Debug, Clone)]
 pub struct ChildActor {
@@ -126,10 +139,10 @@ impl Handler<ChildActor> for ChildActor {
         }
     }
 }
-*/
 
 
 #[tokio::test]
+#[traced_test]
 async fn test_actor() {
     let system = ActorSystem::default();
     let parent = TestActor { state: 0 };
@@ -141,6 +154,9 @@ async fn test_actor() {
     let event = receiver.recv().await.unwrap();
     assert_eq!(event.0, 10);
 
-    system.stop_actor(&parent_ref.path()).await;
+    let child: ActorRef<ChildActor> = system.get_actor(&ActorPath::from("/user/parent/child")).await.unwrap();
+    let response = child.ask(ChildCommand::GetState).await.unwrap();
+    assert_eq!(response, ChildResponse::State(10));   
 
+    system.stop_actor(&parent_ref.path()).await;
 }

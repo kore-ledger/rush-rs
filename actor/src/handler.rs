@@ -7,6 +7,7 @@ use crate::{
 };
 
 use async_trait::async_trait;
+
 use tokio::sync::{mpsc, oneshot};
 
 use tracing::{debug, error};
@@ -36,7 +37,10 @@ where
     A: Actor + Handler<A>,
 {
     /// Creates internal actor message from message and optional reponse sender.
-    pub fn new(message: A::Message, rsvp: Option<oneshot::Sender<A::Response>>) -> Self {
+    pub fn new(
+        message: A::Message,
+        rsvp: Option<oneshot::Sender<A::Response>>,
+    ) -> Self {
         debug!("Creating new internal actor message.");
         Self {
             message,
@@ -69,8 +73,7 @@ where
 pub type BoxedMessageHandler<A> = Box<dyn MessageHandler<A>>;
 
 /// Mailbos receiver.
-pub type MailboxReceiver<A> =
-    mpsc::UnboundedReceiver<BoxedMessageHandler<A>>;
+pub type MailboxReceiver<A> = mpsc::UnboundedReceiver<BoxedMessageHandler<A>>;
 
 /// Mailbox sender.
 pub type MailboxSender<A> = mpsc::UnboundedSender<BoxedMessageHandler<A>>;
@@ -106,6 +109,7 @@ where
             error!("Failed to tell message! {}", error.to_string());
             Err(Error::Send(error.to_string()))
         } else {
+            debug!("Message sent successfully.");
             Ok(())
         }
     }

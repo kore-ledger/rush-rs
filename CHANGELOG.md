@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🚀 Features
+
+- Add actor lifecycle
+
+### 📚 Documentation
+
+- Add CHANGELOG.md
+- Update README.md
+
 ## [0.1.0] - 2024-05-27
 
 ### 🚀 Features

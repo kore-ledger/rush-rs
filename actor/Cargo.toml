@@ -12,3 +12,6 @@ thiserror ={ workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tracing-test = { workspace = true }
