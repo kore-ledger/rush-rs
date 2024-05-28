@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - Add CHANGELOG.md
 - Update README.md
 
+### 🧪 Testing
+
+- Runner and integration test
+
 ## [0.1.0] - 2024-05-27
 
 ### 🚀 Features
