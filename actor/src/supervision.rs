@@ -61,6 +61,7 @@ pub struct FixedIntervalStrategy {
     duration: Duration,
 }
 
+/// Implementation of fixed interval strategy.
 impl FixedIntervalStrategy {
     pub fn new(max_retries: usize, duration: Duration) -> Self {
         FixedIntervalStrategy {
@@ -70,6 +71,7 @@ impl FixedIntervalStrategy {
     }
 }
 
+/// Implementation of `RetryStrategy` for `FixedIntervalStrategy`.
 impl RetryStrategy for FixedIntervalStrategy {
     fn max_retries(&self) -> usize {
         self.max_retries
@@ -90,6 +92,7 @@ pub struct ExponentialBackoffStrategy {
     inner: Arc<Mutex<backoff::ExponentialBackoff>>,
 }
 
+/// Implementation of exponential backoff strategy.
 impl ExponentialBackoffStrategy {
     pub fn new(max_retries: usize) -> Self {
         ExponentialBackoffStrategy {
@@ -99,6 +102,7 @@ impl ExponentialBackoffStrategy {
     }
 }
 
+/// Implementation of `RetryStrategy` for `ExponentialBackoffStrategy`.
 impl RetryStrategy for ExponentialBackoffStrategy {
     fn max_retries(&self) -> usize {
         self.max_retries

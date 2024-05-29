@@ -1,0 +1,12 @@
+[package]
+name = "store"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+actor = { path = "../actor" }
+async-trait = { workspace = true }
+bincode = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }

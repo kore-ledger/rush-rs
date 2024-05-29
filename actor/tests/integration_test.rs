@@ -67,14 +67,14 @@ impl Handler<TestActor> for TestActor {
         match message {
             TestCommand::Increment(value) => {
                 self.state += value;
-                ctx.emit(TestEvent(self.state)).await.unwrap();
+                ctx.emit_event(TestEvent(self.state)).await.unwrap();
                 let child: ActorRef<ChildActor> = ctx.get_child("child").await.unwrap();
                 child.tell(ChildCommand::SetState(self.state)).await.unwrap();
                 TestResponse::None
             }
             TestCommand::Decrement(value) => {
                 self.state -= value;
-                ctx.emit(TestEvent(self.state)).await.unwrap();
+                ctx.emit_event(TestEvent(self.state)).await.unwrap();
                 TestResponse::None
             }
             TestCommand::GetState => TestResponse::State(self.state),
@@ -130,7 +130,7 @@ impl Handler<ChildActor> for ChildActor {
         match message {
             ChildCommand::SetState(value) => {
                 self.state = value;
-                ctx.emit(ChildEvent(self.state)).await.unwrap();
+                ctx.emit_event(ChildEvent(self.state)).await.unwrap();
                 ChildResponse::None
             },
             ChildCommand::GetState => {
@@ -146,7 +146,7 @@ impl Handler<ChildActor> for ChildActor {
 async fn test_actor() {
     let system = ActorSystem::default();
     let parent = TestActor { state: 0 };
-    let parent_ref = system.create_actor("parent", parent).await.unwrap();
+    let parent_ref = system.create_root_actor("parent", parent).await.unwrap();
     let mut receiver = parent_ref.subscribe();
     parent_ref.tell(TestCommand::Increment(10)).await.unwrap();
     let response = parent_ref.ask(TestCommand::GetState).await.unwrap();

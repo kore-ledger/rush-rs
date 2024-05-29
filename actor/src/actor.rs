@@ -10,18 +10,20 @@
 
 use crate::{
     handler::HandleHelper, supervision::SupervisionStrategy, ActorPath,
+    error::ErrorHelper, 
+    runner::{InnerEvent, InnerSender},
     ActorSystem, Error,
 };
 
-use tokio::sync::broadcast::{
-    Receiver as EventReceiver, Sender as EventSender,
-};
+use tokio::sync::broadcast::Receiver as EventReceiver;
 
 use tokio_util::sync::CancellationToken;
 
 use async_trait::async_trait;
 
 use serde::{de::DeserializeOwned, Serialize};
+
+use tracing::debug;
 
 use std::{fmt::Debug, marker::PhantomData};
 
@@ -33,25 +35,31 @@ pub struct ActorContext<A: Actor> {
     path: ActorPath,
     /// The actor system.
     system: ActorSystem,
-    /// The event sender.
-    event_sender: EventSender<A::Event>,
     /// The actor lifecycle.
     lifecycle: ActorLifecycle,
     /// Error in the actor.
     error: Option<Error>,
+    /// Error sender helper
+    error_sender: ErrorHelper<A>,
+    /// Inner sender.
+    inner_sender: InnerSender<A>,
     /// Cancellation token.
     token: CancellationToken,
     /// Phantom data for the actor type.
     phantom_a: PhantomData<A>,
 }
 
-impl<A: Actor> ActorContext<A> {
+impl<A> ActorContext<A> 
+where
+    A: Actor + Handler<A>,
+{
     /// Creates a new actor context.
     ///
     /// # Arguments
     ///
     /// * `path` - The path of the actor.
     /// * `system` - The actor system.
+    /// * `error_sender` - The error sender helper.
     /// * `token` - The cancellation token.
     /// * `event_sender` - The event sender.
     ///
@@ -63,14 +71,16 @@ impl<A: Actor> ActorContext<A> {
         path: ActorPath,
         system: ActorSystem,
         token: CancellationToken,
-        event_sender: EventSender<<A as Actor>::Event>,
+        error_sender: ErrorHelper<A>,
+        inner_sender: InnerSender<A>,
     ) -> Self {
         Self {
             path,
             system,
-            event_sender,
             lifecycle: ActorLifecycle::Created,
             error: None,
+            error_sender,
+            inner_sender,
             token,
             phantom_a: PhantomData,
         }
@@ -122,8 +132,27 @@ impl<A: Actor> ActorContext<A> {
     ///
     /// Returns an error if the event could not be emitted.
     ///
-    pub async fn emit(&self, event: A::Event) -> Result<usize, Error> {
-        self.event_sender.send(event).map_err(|_| Error::SendEvent)
+    pub async fn emit_event(&self, event: A::Event) -> Result<(), Error> {
+        self.inner_sender.send(InnerEvent::Event(event)).map_err(|_| Error::SendEvent)
+        //self.event_sender.send(event).map_err(|_| Error::SendEvent)
+    }
+
+    /// Emits an error.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `error` - The error to emit.
+    /// 
+    /// # Returns
+    /// 
+    /// Void result.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the error could not be emitted.
+    /// 
+    pub async fn emit_error(&self, error: Error) -> Result<(), Error> {
+        self.inner_sender.send(InnerEvent::Error(error)).map_err(|_| Error::SendError)
     }
 
     /// Create a child actor under this actor.
@@ -150,7 +179,7 @@ impl<A: Actor> ActorContext<A> {
         C: Actor + Handler<C>,
     {
         let path = self.path.clone() / name;
-        self.system.create_actor_path(path, actor).await
+        self.system.create_actor_path(path, actor, Some(self.error_sender.clone())).await
     }
 
     /// Retrieve a child actor running under this actor.
@@ -196,7 +225,7 @@ impl<A: Actor> ActorContext<A> {
         F: FnOnce() -> C,
     {
         let path = self.path.clone() / name;
-        self.system.get_or_create_actor_path(&path, actor_fn).await
+        self.system.get_or_create_actor_path(&path, Some(self.error_sender.clone()), actor_fn).await
     }
 
     /// Stops the child actor.
@@ -354,6 +383,7 @@ pub trait Actor: Send + Sync + Sized + 'static {
     ) -> Result<(), Error> {
         Ok(())
     }
+
 }
 
 /// Events that this actor will emit after processing a message. The events emitted by a message
@@ -384,11 +414,23 @@ pub trait Handler<A: Actor>: Send + Sync {
     ///
     /// Returns the response of the message (if any).
     ///
+    /// # Errors
+    /// 
+    /// Returns an error if the message could not be handled.
     async fn handle(
         &mut self,
         msg: A::Message,
         ctx: &mut ActorContext<A>,
     ) -> A::Response;
+
+    async fn handle_child_error(
+        &mut self,
+        error: Error,
+        _ctx: &mut ActorContext<A>,
+    ) {
+        debug!("Handling error: {:?}", error);
+        // Default implementation from child actor errors.
+    }
 }
 
 /// Actor reference.
@@ -554,7 +596,7 @@ mod test {
         ) -> TestResponse {
             let value = msg.0;
             self.counter += value;
-            ctx.emit(TestEvent(self.counter)).await.unwrap();
+            ctx.emit_event(TestEvent(self.counter)).await.unwrap();
             TestResponse(self.counter)
         }
     }
@@ -563,7 +605,7 @@ mod test {
     async fn test_actor() {
         let system = ActorSystem::default();
         let actor = TestActor { counter: 0 };
-        let actor_ref = system.create_actor("test", actor).await.unwrap();
+        let actor_ref = system.create_root_actor("test", actor).await.unwrap();
         actor_ref.tell(TestMessage(10)).await.unwrap();
         let mut recv = actor_ref.subscribe();
         let response = actor_ref.ask(TestMessage(10)).await.unwrap();

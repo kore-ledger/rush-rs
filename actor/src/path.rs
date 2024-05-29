@@ -6,12 +6,14 @@
 //! The `path` module provides the `ActorPath` type. The `ActorPath` type is a path to an actor in the actor system.
 //!
 
+use serde::{Deserialize, Serialize};
+
 use std::cmp::Ordering;
 use std::fmt::{Error, Formatter};
 
 /// Actor path. This is a path to an actor in the actor system.
 ///
-#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ActorPath(Vec<String>);
 
 impl ActorPath {

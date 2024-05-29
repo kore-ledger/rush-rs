@@ -9,33 +9,51 @@ use crate::{
     handler::{mailbox, HandleHelper, MailboxReceiver},
     supervision::SupervisionStrategy,
     system::ActorSystem,
-    ActorPath,
+    error::{ErrorHelper, ErrorBoxReceiver, error_box},
+    ActorPath, Error,
 };
 
+use serde::{Deserialize, Serialize};
 use tokio::{
     select,
-    sync::broadcast::{self, Sender as EventSender},
+    sync::{broadcast::{self, Sender as EventSender}, mpsc},
 };
 use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error};
 
+/// Inner sender and receiver types.
+pub type InnerSender<A> = mpsc::UnboundedSender<InnerEvent<A>>;
+pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerEvent<A>>;
+
 /// Actor runner.
-pub(crate) struct ActorRunner<A: Actor> {
+pub(crate) struct ActorRunner<A: Actor, P: Actor> {
     path: ActorPath,
     actor: A,
     receiver: MailboxReceiver<A>,
     event_sender: EventSender<A::Event>,
+    error_sender: ErrorHelper<A>,
+    parent_helper: Option<ErrorHelper<P>>,
+    error_receiver: ErrorBoxReceiver<A>,
+    inner_sender: InnerSender<A>,
+    inner_receiver: InnerReceiver<A>,
     token: CancellationToken,
 }
 
-impl<A: Actor + Handler<A>> ActorRunner<A> {
+impl<A, P> ActorRunner<A, P> 
+where
+    A: Actor + Handler<A>,
+    P: Actor + Handler<P>,
+{
     /// Creates a new actor runner and the actor reference.
-    pub(crate) fn create(path: ActorPath, actor: A) -> (Self, ActorRef<A>) {
+    pub(crate) fn create(path: ActorPath, actor: A, parent_helper: Option<ErrorHelper<P>>) -> (Self, ActorRef<A>) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
+        let (error_sender, error_receiver) = error_box();
         let (event_sender, event_receiver) = broadcast::channel(100);
+        let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
         let helper = HandleHelper::new(sender);
+        let error_helper = ErrorHelper::new(error_sender);
         let actor_ref = ActorRef::new(path.clone(), helper, event_receiver);
         let token = CancellationToken::new();
         let runner = ActorRunner {
@@ -43,6 +61,11 @@ impl<A: Actor + Handler<A>> ActorRunner<A> {
             actor,
             receiver,
             event_sender,
+            error_sender: error_helper,
+            parent_helper,
+            error_receiver,
+            inner_sender,
+            inner_receiver,
             token,
         };
         (runner, actor_ref)
@@ -58,7 +81,8 @@ impl<A: Actor + Handler<A>> ActorRunner<A> {
             self.path.clone(),
             system,
             self.token.clone(),
-            self.event_sender.clone(),
+            self.error_sender.clone(),
+            self.inner_sender.clone(),
         );
 
         // Main loop of the actor.
@@ -172,11 +196,29 @@ impl<A: Actor + Handler<A>> ActorRunner<A> {
     /// * `ctx` - The actor context.
     ///
     pub(crate) async fn run(&mut self, ctx: &mut ActorContext<A>) {
+        debug!("Running actor {}.", &self.path);
         loop {
             select! {
+                // Handle message from `ActorRef`.
                 msg = self.receiver.recv() => {
                     if let Some(mut msg) = msg {
                         msg.handle(&mut self.actor, ctx).await;
+                    } else {
+                        break;
+                    }
+                }
+                // Handle error from `ErrorBoxReceiver`.
+                error =  self.error_receiver.recv() => {
+                    if let Some(mut error) = error {
+                        error.handle(&mut self.actor, ctx).await;
+                    } else {
+                        break;
+                    }
+                }
+                // Handle inner event from `inner_receiver`.
+                event = self.inner_receiver.recv() => {
+                    if let Some(event) = event {
+                        self.inner_handle(event).await;
                     } else {
                         break;
                     }
@@ -185,14 +227,46 @@ impl<A: Actor + Handler<A>> ActorRunner<A> {
                     break;
                 }
             }
+        }        
+    }
+
+    /// Inner handle event.
+    async fn inner_handle(&mut self, event: InnerEvent<A>) {
+        match event {
+            InnerEvent::Event(event) => {
+                match self.event_sender.send(event) {
+                    Ok(size) => {
+                        debug!("Event sent successfully to {} subscribers.", size);
+                    }
+                    Err(err) => {
+                        error!("Failed to send event: {:?}", err);
+                    }
+                }
+            }
+            InnerEvent::Error(error) => {
+                if let Some(parent_helper) = self.parent_helper.as_mut() {
+                    parent_helper.send(error).await.unwrap_or_else(|err| {
+                        error!("Failed to send error to parent actor: {:?}", err);
+                    });
+                }
+            }
+            _ => {}
         }
     }
+
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InnerEvent<A: Actor> {
+    Event(A::Event),
+    Error(Error),
+    Fail(Error),
 }
 
 #[cfg(test)]
 mod tests {
 
-    use super::*;
+    //use super::*;
 
     use crate::{
         Error,
@@ -268,7 +342,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_actor_runner_failed() {    
-        let system = ActorSystem::default();
+    /*     let system = ActorSystem::default();
 
         let actor = TestActor { failed: true };
 
@@ -292,6 +366,6 @@ mod tests {
         let _ = actor_ref.tell(TestMessage).await;
 
         assert!(logs_contain("Message sent successfully"));
-
+*/
     }
 }

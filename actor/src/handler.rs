@@ -72,7 +72,7 @@ where
 /// Boxed message handler.
 pub type BoxedMessageHandler<A> = Box<dyn MessageHandler<A>>;
 
-/// Mailbos receiver.
+/// Mailbo receiver.
 pub type MailboxReceiver<A> = mpsc::UnboundedReceiver<BoxedMessageHandler<A>>;
 
 /// Mailbox sender.

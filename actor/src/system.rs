@@ -8,16 +8,20 @@
 //!
 
 use crate::{
-    actor::{Actor, Handler},
-    runner::ActorRunner,
-    ActorPath, ActorRef, Error,
+    error::ErrorHelper, 
+    runner::ActorRunner, 
+    Actor, ActorContext, Handler, ActorPath, ActorRef, Error, Message, Event
 };
-
-use std::{any::Any, collections::HashMap, sync::Arc};
 
 use tokio::sync::RwLock;
 
+use async_trait::async_trait;
+
 use tracing::{debug, error};
+
+use serde::{Deserialize, Serialize};
+
+use std::{any::Any, collections::HashMap, sync::Arc};
 
 /// Actor system.
 ///
@@ -51,13 +55,15 @@ impl ActorSystem {
 
     /// Creates an actor in this actor system with the given path and actor type.
     /// If the actor already exists, an error is returned.
-    pub(crate) async fn create_actor_path<A>(
+    pub(crate) async fn create_actor_path<A, P>(
         &self,
         path: ActorPath,
         actor: A,
+        error_helper: Option<ErrorHelper<P>>,
     ) -> Result<ActorRef<A>, Error>
     where
         A: Actor + Handler<A>,
+        P: Actor + Handler<P>,
     {
         // Check if the actor already exists.
         let mut actors = self.actors.write().await;
@@ -68,7 +74,7 @@ impl ActorSystem {
 
         // Create the actor runner and init it.
         let system = self.clone();
-        let (mut runner, actor_ref) = ActorRunner::create(path, actor);
+        let (mut runner, actor_ref) = ActorRunner::create(path, actor, error_helper);
         tokio::spawn(async move {
             runner.init(system).await;
         });
@@ -89,6 +95,7 @@ impl ActorSystem {
     ///
     /// * `name` - The name of the actor to create.
     /// * `actor` - The type with `Actor` trait to create.
+    /// * `error_helper` - The error helper actor (`None` it it is root actor).
     ///
     /// # Returns
     ///
@@ -98,7 +105,7 @@ impl ActorSystem {
     ///
     /// Returns an error if the actor already exists.
     ///
-    pub async fn create_actor<A>(
+    pub async fn create_root_actor<A>(
         &self,
         name: &str,
         actor: A,
@@ -107,17 +114,19 @@ impl ActorSystem {
         A: Actor + Handler<A>,
     {
         let path = ActorPath::from("/user") / name;
-        self.create_actor_path(path, actor).await
+        self.create_actor_path::<A, DummyActor>(path, actor, None).await
     }
 
     /// Retrieve or create a new actor on this actor system if it does not exist yet.
-    pub(crate) async fn get_or_create_actor_path<A, F>(
+    pub(crate) async fn get_or_create_actor_path<A, P, F>(
         &self,
         path: &ActorPath,
+        error_helper: Option<ErrorHelper<P>>,
         actor_fn: F,
     ) -> Result<ActorRef<A>, Error>
     where
         A: Actor + Handler<A>,
+        P: Actor + Handler<P>,
         F: FnOnce() -> A,
     {
         let actors = self.actors.read().await;
@@ -125,7 +134,7 @@ impl ActorSystem {
             Some(actor) => Ok(actor),
             None => {
                 drop(actors);
-                self.create_actor_path(path.clone(), actor_fn()).await
+                self.create_actor_path(path.clone(), actor_fn(), error_helper).await
             }
         }
     }
@@ -155,7 +164,7 @@ impl ActorSystem {
         F: FnOnce() -> A,
     {
         let path = ActorPath::from("/user") / name;
-        self.get_or_create_actor_path(&path, actor_fn).await
+        self.get_or_create_actor_path::<A, DummyActor, F>(&path, None, actor_fn).await
     }
 
     /// Stops the actor on this actor system. All its children will also be stopped.
@@ -188,4 +197,30 @@ impl ActorSystem {
         }
         children
     }
+}
+
+/// Dummy actor.
+struct DummyActor;
+
+/// Dummy message.
+#[derive(Debug, Clone)]
+struct DummyMessage;
+
+impl Message for DummyMessage {}
+
+/// Dummy event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DummyEvent;
+
+impl Event for DummyEvent {}
+
+impl Actor for DummyActor {
+    type Message = DummyMessage;
+    type Response = ();
+    type Event = DummyEvent;
+}
+
+#[async_trait]
+impl Handler<DummyActor> for DummyActor {
+    async fn handle(&mut self, _message: DummyMessage, _ctx: &mut ActorContext<DummyActor>) {}
 }
