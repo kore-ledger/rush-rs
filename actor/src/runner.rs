@@ -6,17 +6,20 @@
 
 use crate::{
     actor::{Actor, ActorContext, ActorLifecycle, ActorRef, Handler},
+    error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
     handler::{mailbox, HandleHelper, MailboxReceiver},
     supervision::SupervisionStrategy,
     system::ActorSystem,
-    error::{ErrorHelper, ErrorBoxReceiver, error_box},
     ActorPath, Error,
 };
 
 use serde::{Deserialize, Serialize};
 use tokio::{
     select,
-    sync::{broadcast::{self, Sender as EventSender}, mpsc},
+    sync::{
+        broadcast::{self, Sender as EventSender},
+        mpsc,
+    },
 };
 use tokio_util::sync::CancellationToken;
 
@@ -40,13 +43,17 @@ pub(crate) struct ActorRunner<A: Actor, P: Actor> {
     token: CancellationToken,
 }
 
-impl<A, P> ActorRunner<A, P> 
+impl<A, P> ActorRunner<A, P>
 where
     A: Actor + Handler<A>,
     P: Actor + Handler<P>,
 {
     /// Creates a new actor runner and the actor reference.
-    pub(crate) fn create(path: ActorPath, actor: A, parent_helper: Option<ErrorHelper<P>>) -> (Self, ActorRef<A>) {
+    pub(crate) fn create(
+        path: ActorPath,
+        actor: A,
+        parent_helper: Option<ErrorHelper<P>>,
+    ) -> (Self, ActorRef<A>) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
         let (error_sender, error_receiver) = error_box();
@@ -227,33 +234,48 @@ where
                     break;
                 }
             }
-        }        
+        }
     }
 
     /// Inner handle event.
     async fn inner_handle(&mut self, event: InnerEvent<A>) {
         match event {
-            InnerEvent::Event(event) => {
-                match self.event_sender.send(event) {
-                    Ok(size) => {
-                        debug!("Event sent successfully to {} subscribers.", size);
-                    }
-                    Err(err) => {
-                        error!("Failed to send event: {:?}", err);
-                    }
+            InnerEvent::Event(event) => match self.event_sender.send(event) {
+                Ok(size) => {
+                    debug!("Event sent successfully to {} subscribers.", size);
                 }
-            }
+                Err(err) => {
+                    error!("Failed to send event: {:?}", err);
+                }
+            },
             InnerEvent::Error(error) => {
                 if let Some(parent_helper) = self.parent_helper.as_mut() {
-                    parent_helper.send(error).await.unwrap_or_else(|err| {
-                        error!("Failed to send error to parent actor: {:?}", err);
-                    });
+                    parent_helper
+                        .send(SystemError::Error(error))
+                        .await
+                        .unwrap_or_else(|err| {
+                            error!(
+                                "Failed to send error to parent actor: {:?}",
+                                err
+                            );
+                        });
                 }
             }
-            _ => {}
+            InnerEvent::Fail(error) => {
+                if let Some(parent_helper) = self.parent_helper.as_mut() {
+                    parent_helper
+                        .send(SystemError::Fail(error))
+                        .await
+                        .unwrap_or_else(|err| {
+                            error!(
+                                "Failed to send fail to parent actor: {:?}",
+                                err
+                            );
+                        });
+                }
+            }
         }
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -269,9 +291,9 @@ mod tests {
     //use super::*;
 
     use crate::{
-        Error,
         actor::{Actor, ActorContext, Event, Handler, Message},
         supervision::{FixedIntervalStrategy, SupervisionStrategy},
+        Error,
     };
 
     use async_trait::async_trait;
@@ -308,7 +330,10 @@ mod tests {
             )))
         }
 
-        async fn pre_start(&mut self, _ctx: &ActorContext<Self>) -> Result<(), Error> {
+        async fn pre_start(
+            &mut self,
+            _ctx: &ActorContext<Self>,
+        ) -> Result<(), Error> {
             if self.failed {
                 Err(Error::Start)
             } else {
@@ -323,7 +348,7 @@ mod tests {
         ) -> Result<(), Error> {
             if self.failed {
                 self.failed = false;
-             }
+            }
             Ok(())
         }
     }
@@ -334,38 +359,37 @@ mod tests {
             &mut self,
             _msg: TestMessage,
             _ctx: &mut ActorContext<Self>,
-        )  {
-    
+        ) {
         }
     }
 
     #[tokio::test]
     #[traced_test]
-    async fn test_actor_runner_failed() {    
-    /*     let system = ActorSystem::default();
+    async fn test_actor_runner_failed() {
+        /*     let system = ActorSystem::default();
 
-        let actor = TestActor { failed: true };
+                let actor = TestActor { failed: true };
 
-        let (mut runner, actor_ref) = ActorRunner::create(
-            ActorPath::from("/user/test"),
-            actor,
-        );
-        // Init the actor runner.
-        tokio::spawn(async move {
-            runner.init(system).await;
-        });
-        tokio::time::sleep(Duration::from_secs(2)).await;
+                let (mut runner, actor_ref) = ActorRunner::create(
+                    ActorPath::from("/user/test"),
+                    actor,
+                );
+                // Init the actor runner.
+                tokio::spawn(async move {
+                    runner.init(system).await;
+                });
+                tokio::time::sleep(Duration::from_secs(2)).await;
 
-        assert!(logs_contain("Creating new actor runner"));
-        assert!(logs_contain("Actor /user/test is created"));
-        assert!(logs_contain("Actor /user/test failed to start"));
-        assert!(logs_contain("Actor /user/test is faulty"));
-        assert!(logs_contain("Restarting actor with retry strategy"));
-        assert!(logs_contain("Actor /user/test is started"));
+                assert!(logs_contain("Creating new actor runner"));
+                assert!(logs_contain("Actor /user/test is created"));
+                assert!(logs_contain("Actor /user/test failed to start"));
+                assert!(logs_contain("Actor /user/test is faulty"));
+                assert!(logs_contain("Restarting actor with retry strategy"));
+                assert!(logs_contain("Actor /user/test is started"));
 
-        let _ = actor_ref.tell(TestMessage).await;
+                let _ = actor_ref.tell(TestMessage).await;
 
-        assert!(logs_contain("Message sent successfully"));
-*/
+                assert!(logs_contain("Message sent successfully"));
+        */
     }
 }

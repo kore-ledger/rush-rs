@@ -1,7 +1,8 @@
 // Integrations tests for the actor module
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ActorSystem, Error, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, ActorRef, ActorSystem, Error, Event,
+    Handler, Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -49,7 +50,10 @@ impl Actor for TestActor {
     type Response = TestResponse;
     type Event = TestEvent;
 
-    async fn pre_start(&mut self, ctx: &ActorContext<Self>) -> Result<(), Error> {
+    async fn pre_start(
+        &mut self,
+        ctx: &ActorContext<Self>,
+    ) -> Result<(), Error> {
         let child = ChildActor { state: 0 };
         ctx.create_child("child", child).await?;
         Ok(())
@@ -68,8 +72,12 @@ impl Handler<TestActor> for TestActor {
             TestCommand::Increment(value) => {
                 self.state += value;
                 ctx.emit_event(TestEvent(self.state)).await.unwrap();
-                let child: ActorRef<ChildActor> = ctx.get_child("child").await.unwrap();
-                child.tell(ChildCommand::SetState(self.state)).await.unwrap();
+                let child: ActorRef<ChildActor> =
+                    ctx.get_child("child").await.unwrap();
+                child
+                    .tell(ChildCommand::SetState(self.state))
+                    .await
+                    .unwrap();
                 TestResponse::None
             }
             TestCommand::Decrement(value) => {
@@ -85,7 +93,7 @@ impl Handler<TestActor> for TestActor {
 // Defines child actor.
 #[derive(Debug, Clone)]
 pub struct ChildActor {
-    pub state: usize
+    pub state: usize,
 }
 
 // Defines child command.
@@ -126,20 +134,21 @@ impl Actor for ChildActor {
 // Implements handler for child actor.
 #[async_trait]
 impl Handler<ChildActor> for ChildActor {
-    async fn handle(&mut self, message: ChildCommand, ctx: &mut ActorContext<ChildActor>) -> ChildResponse {
+    async fn handle(
+        &mut self,
+        message: ChildCommand,
+        ctx: &mut ActorContext<ChildActor>,
+    ) -> ChildResponse {
         match message {
             ChildCommand::SetState(value) => {
                 self.state = value;
                 ctx.emit_event(ChildEvent(self.state)).await.unwrap();
                 ChildResponse::None
-            },
-            ChildCommand::GetState => {
-                ChildResponse::State(self.state)
             }
+            ChildCommand::GetState => ChildResponse::State(self.state),
         }
     }
 }
-
 
 #[tokio::test]
 #[traced_test]
@@ -154,9 +163,12 @@ async fn test_actor() {
     let event = receiver.recv().await.unwrap();
     assert_eq!(event.0, 10);
 
-    let child: ActorRef<ChildActor> = system.get_actor(&ActorPath::from("/user/parent/child")).await.unwrap();
+    let child: ActorRef<ChildActor> = system
+        .get_actor(&ActorPath::from("/user/parent/child"))
+        .await
+        .unwrap();
     let response = child.ask(ChildCommand::GetState).await.unwrap();
-    assert_eq!(response, ChildResponse::State(10));   
+    assert_eq!(response, ChildResponse::State(10));
 
     system.stop_actor(&parent_ref.path()).await;
 }

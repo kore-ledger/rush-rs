@@ -5,49 +5,46 @@
 //!
 //! This module contains the store implementation.
 //!
-//! The `Store` actor is an actor that offers the ability to persist actors from events that modify 
-//! their state (applying the event sourcing pattern). It also allows you to store snapshots 
-//! of an actor. The `PersistentActor` trait is an extension of the `Actor` trait that must be 
+//! The `Store` actor is an actor that offers the ability to persist actors from events that modify
+//! their state (applying the event sourcing pattern). It also allows you to store snapshots
+//! of an actor. The `PersistentActor` trait is an extension of the `Actor` trait that must be
 //! implemented by actors who need to persist.
 //!
 
 use crate::{
-    error::Error,
     database::{Collection, DbManager},
+    error::Error,
 };
 
-use actor::{Actor, ActorContext, Event, Message, Response, Handler};
+use actor::{Actor, ActorContext, Event, Handler, Message, Response};
 use async_trait::async_trait;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-};
+use std::{fmt::Debug, marker::PhantomData};
 
 /// A trait representing a persistent actor.
 #[async_trait]
-pub trait PersistentActor: Actor + Debug + Clone + Serialize + DeserializeOwned {
-
+pub trait PersistentActor:
+    Actor + Debug + Clone + Serialize + DeserializeOwned
+{
     /// Apply an event to the actor state.
     fn apply(&mut self, event: Self::Event);
 
     /// Persist an event.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// - event: The event to persist.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The result of the operation.
-    /// 
+    ///
     async fn persist(&mut self, event: Self::Event) -> Result<(), Error> {
         self.apply(event);
         Ok(())
     }
-
 }
 
 /// Store actor.
@@ -63,26 +60,22 @@ where
 }
 
 impl<P: PersistentActor> Store<P> {
-
     /// Creates a new store actor.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// - name: The name of the actor.
     /// - manager: The database manager.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The persistent actor.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// An error if it fails to create the collections.
-    /// 
-    pub fn new<C>(
-        name: &str,
-        manager: impl DbManager<C>,
-    ) -> Result<Self, Error>
+    ///
+    pub fn new<C>(name: &str, manager: impl DbManager<C>) -> Result<Self, Error>
     where
         C: Collection + 'static,
     {
@@ -132,13 +125,13 @@ impl<P: PersistentActor> Store<P> {
     }
 
     /// Recover the state.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The recovered state.
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
+    ///
     fn recover(&mut self) -> Result<P, Error> {
         let (key, _) = self.events.last().map_err(|e| {
             Error::Store(format!("Can't get last event: {}", e))
@@ -205,7 +198,6 @@ where
     type Message = StoreCommand<P>;
     type Response = StoreResponse<P>;
     type Event = StoreEvent;
-
 }
 
 #[async_trait]
@@ -217,44 +209,29 @@ where
         &mut self,
         msg: StoreCommand<P>,
         _ctx: &mut ActorContext<Store<P>>,
-    ) -> StoreResponse<P>
-    {
+    ) -> StoreResponse<P> {
         // Match the command.
         match msg {
             // Persist an event.
-            StoreCommand::Persist(event) => {
-                match self.persist(event) {
-                    Ok(_) => {
-                        self.event_counter += 1;
-                        StoreResponse::None
-                    },
-                    Err(e) => {
-                        StoreResponse::Error(e)
-                    },
+            StoreCommand::Persist(event) => match self.persist(event) {
+                Ok(_) => {
+                    self.event_counter += 1;
+                    StoreResponse::None
                 }
+                Err(e) => StoreResponse::Error(e),
             },
             // Snapshot the state.
-            StoreCommand::Snapshot(actor) => {
-                match self.snapshot(&actor) {
-                    Ok(_) => {
-                        self.state_counter += 1;
-                        StoreResponse::None
-                    },
-                    Err(e) => {
-                        StoreResponse::Error(e)
-                    },
+            StoreCommand::Snapshot(actor) => match self.snapshot(&actor) {
+                Ok(_) => {
+                    self.state_counter += 1;
+                    StoreResponse::None
                 }
+                Err(e) => StoreResponse::Error(e),
             },
             // Recover the state.
-            StoreCommand::Recover => {
-                match self.recover() {
-                    Ok(state) => {
-                        StoreResponse::State(state)
-                    },
-                    Err(e) => {
-                        StoreResponse::Error(e)
-                    },
-                }
+            StoreCommand::Recover => match self.recover() {
+                Ok(state) => StoreResponse::State(state),
+                Err(e) => StoreResponse::Error(e),
             },
         }
     }

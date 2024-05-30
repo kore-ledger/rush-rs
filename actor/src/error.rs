@@ -10,11 +10,11 @@ use tokio::sync::mpsc;
 
 use async_trait::async_trait;
 
-use thiserror::Error;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tracing::{debug, error};
 
-use std::marker::PhantomData;
+use std::{fmt::Display, marker::PhantomData};
 
 // TODO: We should improve the error handling in the actor system.
 
@@ -42,9 +42,6 @@ pub enum Error {
     /// An error occurred while sending an envent to event bus.
     #[error("An error occurred while sending an event to event bus.")]
     SendEvent,
-    /// An error occurred while sending an error to parent actor.
-    #[error("An error occurred while sending an error to parent actor.")]
-    SendError,
     /// Create store error.
     #[error("Can't create store: {0}")]
     CreateStore(String),
@@ -57,6 +54,31 @@ pub enum Error {
     /// Store  Error.
     #[error("Store error: {0}")]
     Store(String),
+    /// Error that does not compromise the operation of the system.
+    #[error("Error: {0}")]
+    Functional(String),
+}
+
+/// System error type.
+/// This type is used to send errors to the parent actor, when an error occurs in a child actor.
+/// Distinguish between errors that can be dealt with at the level of the parent actor or failures
+/// that require supervision.
+///
+#[derive(Clone, Debug, Error, PartialEq, Serialize, Deserialize)]
+pub(crate) enum SystemError {
+    /// Error.
+    Error(Error),
+    /// Fail.
+    Fail(Error),
+}
+
+impl Display for SystemError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SystemError::Error(error) => write!(f, "Error: {}", error),
+            SystemError::Fail(error) => write!(f, "Fail: {}", error),
+        }
+    }
 }
 
 /// Error handler trait for actors errors.
@@ -69,15 +91,15 @@ pub trait ErrorHandler<A: Actor>: Send + Sync {
 /// Internal error message.
 struct ErrorMessage<A: Actor> {
     /// The error.
-    error: Error,
+    error: SystemError,
     /// Phantom data.
     _phantom_actor: PhantomData<A>,
-} 
+}
 
 /// Internal error message implementation.
 impl<A: Actor> ErrorMessage<A> {
     /// Creates internal error message from error.
-    pub fn new(error: Error) -> Self {
+    pub fn new(error: SystemError) -> Self {
         Self {
             error,
             _phantom_actor: PhantomData,
@@ -87,12 +109,20 @@ impl<A: Actor> ErrorMessage<A> {
 
 /// Error handler implementation for internal error message.
 #[async_trait]
-impl<A> ErrorHandler<A> for ErrorMessage<A> 
+impl<A> ErrorHandler<A> for ErrorMessage<A>
 where
-    A: Actor + Handler<A>,    
+    A: Actor + Handler<A>,
 {
     async fn handle(&mut self, actor: &mut A, ctx: &mut ActorContext<A>) {
-        actor.handle_child_error(self.error.clone(), ctx).await;
+        debug!("Handling error in actor.");
+        match &self.error {
+            SystemError::Error(error) => {
+                actor.on_child_error(error.clone(), ctx).await;
+            }
+            SystemError::Fail(error) => {
+                actor.on_child_fault(error.clone(), ctx).await;
+            }
+        }
     }
 }
 
@@ -129,7 +159,10 @@ where
     }
 
     /// Sends an error to the actor.
-    pub async fn send(&mut self, error: Error) -> Result<(), Error> {
+    pub(crate) async fn send(
+        &mut self,
+        error: SystemError,
+    ) -> Result<(), Error> {
         debug!("Sending error to parent actor.");
         let error = Box::new(ErrorMessage::new(error));
         if self.sender.send(error).is_err() {
@@ -137,7 +170,6 @@ where
             return Err(Error::Send("Error".to_string()));
         }
         Ok(())
-        
     }
 
     /// True if the sender is closed.
@@ -154,3 +186,29 @@ impl<A> Clone for ErrorHelper<A> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::{actor::DummyActor, runner::InnerEvent};
+
+    #[tokio::test]
+    async fn test_error_helper() {
+        let (sender, mut receiver) = error_box::<DummyActor>();
+        let (inner_sender, _) =
+            mpsc::unbounded_channel::<InnerEvent<DummyActor>>();
+        let mut error_helper = ErrorHelper::new(sender);
+        let error = Error::Send("Error".to_string());
+        //let inner_event: InnerEvent<DummyActor> = InnerEvent::Error(error.clone());
+        error_helper
+            .send(SystemError::Error(error.clone()))
+            .await
+            .unwrap();
+        let error_handler = receiver.recv().await;
+        assert!(error_handler.is_some());
+        let mut error_handler = error_handler.unwrap();
+        let mut actor = DummyActor;
+        let mut ctx = ActorContext::dummy(error_helper, inner_sender);
+        error_handler.handle(&mut actor, &mut ctx).await;
+    }
+}

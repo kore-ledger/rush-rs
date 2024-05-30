@@ -8,18 +8,13 @@
 //!
 
 use crate::{
-    error::ErrorHelper, 
-    runner::ActorRunner, 
-    Actor, ActorContext, Handler, ActorPath, ActorRef, Error, Message, Event
+    actor::DummyActor, error::ErrorHelper, runner::ActorRunner, Actor,
+    ActorPath, ActorRef, Error, Handler,
 };
 
 use tokio::sync::RwLock;
 
-use async_trait::async_trait;
-
 use tracing::{debug, error};
-
-use serde::{Deserialize, Serialize};
 
 use std::{any::Any, collections::HashMap, sync::Arc};
 
@@ -74,7 +69,8 @@ impl ActorSystem {
 
         // Create the actor runner and init it.
         let system = self.clone();
-        let (mut runner, actor_ref) = ActorRunner::create(path, actor, error_helper);
+        let (mut runner, actor_ref) =
+            ActorRunner::create(path, actor, error_helper);
         tokio::spawn(async move {
             runner.init(system).await;
         });
@@ -114,7 +110,8 @@ impl ActorSystem {
         A: Actor + Handler<A>,
     {
         let path = ActorPath::from("/user") / name;
-        self.create_actor_path::<A, DummyActor>(path, actor, None).await
+        self.create_actor_path::<A, DummyActor>(path, actor, None)
+            .await
     }
 
     /// Retrieve or create a new actor on this actor system if it does not exist yet.
@@ -134,7 +131,8 @@ impl ActorSystem {
             Some(actor) => Ok(actor),
             None => {
                 drop(actors);
-                self.create_actor_path(path.clone(), actor_fn(), error_helper).await
+                self.create_actor_path(path.clone(), actor_fn(), error_helper)
+                    .await
             }
         }
     }
@@ -164,7 +162,8 @@ impl ActorSystem {
         F: FnOnce() -> A,
     {
         let path = ActorPath::from("/user") / name;
-        self.get_or_create_actor_path::<A, DummyActor, F>(&path, None, actor_fn).await
+        self.get_or_create_actor_path::<A, DummyActor, F>(&path, None, actor_fn)
+            .await
     }
 
     /// Stops the actor on this actor system. All its children will also be stopped.
@@ -197,30 +196,4 @@ impl ActorSystem {
         }
         children
     }
-}
-
-/// Dummy actor.
-struct DummyActor;
-
-/// Dummy message.
-#[derive(Debug, Clone)]
-struct DummyMessage;
-
-impl Message for DummyMessage {}
-
-/// Dummy event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DummyEvent;
-
-impl Event for DummyEvent {}
-
-impl Actor for DummyActor {
-    type Message = DummyMessage;
-    type Response = ();
-    type Event = DummyEvent;
-}
-
-#[async_trait]
-impl Handler<DummyActor> for DummyActor {
-    async fn handle(&mut self, _message: DummyMessage, _ctx: &mut ActorContext<DummyActor>) {}
 }

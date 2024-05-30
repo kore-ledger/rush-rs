@@ -5,8 +5,8 @@
 //!
 
 use crate::{
-    error::Error,
     database::{Collection, DbManager},
+    error::Error,
 };
 
 use std::collections::BTreeMap;

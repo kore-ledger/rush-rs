@@ -9,10 +9,11 @@
 //!
 
 use crate::{
-    handler::HandleHelper, supervision::SupervisionStrategy, ActorPath,
-    error::ErrorHelper, 
+    error::ErrorHelper,
+    handler::HandleHelper,
     runner::{InnerEvent, InnerSender},
-    ActorSystem, Error,
+    supervision::SupervisionStrategy,
+    ActorPath, ActorSystem, Error,
 };
 
 use tokio::sync::broadcast::Receiver as EventReceiver;
@@ -21,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 use async_trait::async_trait;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use tracing::debug;
 
@@ -49,7 +50,7 @@ pub struct ActorContext<A: Actor> {
     phantom_a: PhantomData<A>,
 }
 
-impl<A> ActorContext<A> 
+impl<A> ActorContext<A>
 where
     A: Actor + Handler<A>,
 {
@@ -82,6 +83,24 @@ where
             error_sender,
             inner_sender,
             token,
+            phantom_a: PhantomData,
+        }
+    }
+
+    /// Dummy context for tests.
+    #[cfg(test)]
+    pub fn dummy(
+        error_helper: ErrorHelper<A>,
+        inner_sender: InnerSender<A>,
+    ) -> Self {
+        Self {
+            path: ActorPath::from("/user/dummy"),
+            system: ActorSystem::default(),
+            lifecycle: ActorLifecycle::Created,
+            error: None,
+            error_sender: error_helper,
+            inner_sender,
+            token: CancellationToken::new(),
             phantom_a: PhantomData,
         }
     }
@@ -133,26 +152,51 @@ where
     /// Returns an error if the event could not be emitted.
     ///
     pub async fn emit_event(&self, event: A::Event) -> Result<(), Error> {
-        self.inner_sender.send(InnerEvent::Event(event)).map_err(|_| Error::SendEvent)
+        self.inner_sender
+            .send(InnerEvent::Event(event))
+            .map_err(|_| Error::SendEvent)
         //self.event_sender.send(event).map_err(|_| Error::SendEvent)
     }
 
     /// Emits an error.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `error` - The error to emit.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Void result.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the error could not be emitted.
-    /// 
+    ///
     pub async fn emit_error(&self, error: Error) -> Result<(), Error> {
-        self.inner_sender.send(InnerEvent::Error(error)).map_err(|_| Error::SendError)
+        self.inner_sender
+            .send(InnerEvent::Error(error))
+            .map_err(|error| Error::Send(format!("{:?}", error)))
+    }
+
+    /// Emits a fail.
+    /// This is used to emit a fail in a child actor.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error to emit.
+    ///
+    /// # Returns
+    ///
+    /// Void result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fail could not be emitted.
+    ///
+    pub async fn emit_fail(&self, error: Error) -> Result<(), Error> {
+        self.inner_sender
+            .send(InnerEvent::Fail(error))
+            .map_err(|error| Error::Send(format!("{:?}", error)))
     }
 
     /// Create a child actor under this actor.
@@ -179,7 +223,9 @@ where
         C: Actor + Handler<C>,
     {
         let path = self.path.clone() / name;
-        self.system.create_actor_path(path, actor, Some(self.error_sender.clone())).await
+        self.system
+            .create_actor_path(path, actor, Some(self.error_sender.clone()))
+            .await
     }
 
     /// Retrieve a child actor running under this actor.
@@ -225,7 +271,13 @@ where
         F: FnOnce() -> C,
     {
         let path = self.path.clone() / name;
-        self.system.get_or_create_actor_path(&path, Some(self.error_sender.clone()), actor_fn).await
+        self.system
+            .get_or_create_actor_path(
+                &path,
+                Some(self.error_sender.clone()),
+                actor_fn,
+            )
+            .await
     }
 
     /// Stops the child actor.
@@ -383,7 +435,6 @@ pub trait Actor: Send + Sync + Sized + 'static {
     ) -> Result<(), Error> {
         Ok(())
     }
-
 }
 
 /// Events that this actor will emit after processing a message. The events emitted by a message
@@ -415,7 +466,7 @@ pub trait Handler<A: Actor>: Send + Sync {
     /// Returns the response of the message (if any).
     ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the message could not be handled.
     async fn handle(
         &mut self,
@@ -423,12 +474,55 @@ pub trait Handler<A: Actor>: Send + Sync {
         ctx: &mut ActorContext<A>,
     ) -> A::Response;
 
-    async fn handle_child_error(
+    /// Called when an error occurs in a child actor.
+    /// Override this method to define what should happen when an error occurs in a child actor.
+    /// By default it does nothing.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error that occurred.
+    /// * `ctx` - The actor context.
+    ///
+    /// # Returns
+    ///
+    /// Returns a void result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the error could not be handled.
+    ///
+    async fn on_child_error(
+        &mut self,
+        error: Error,
+        ctx: &mut ActorContext<A>,
+    ) {
+        debug!("Handling error: {:?}", error);
+        // Default implementation from child actor errors.
+        self.on_child_fault(error, ctx).await;
+    }
+
+    /// Called when a fault occurs in a child actor.
+    /// Override this method to define what should happen when a fault occurs in a child actor.
+    /// By default it does nothing.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error that occurred.
+    ///
+    /// # Returns
+    ///
+    /// Returns a void result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fault could not be handled.
+    ///
+    async fn on_child_fault(
         &mut self,
         error: Error,
         _ctx: &mut ActorContext<A>,
     ) {
-        debug!("Handling error: {:?}", error);
+        debug!("Handling fault: {:?}", error);
         // Default implementation from child actor errors.
     }
 }
@@ -552,6 +646,46 @@ where
             sender: self.sender.clone(),
             event_receiver: self.event_receiver.resubscribe(),
         }
+    }
+}
+
+/// Dummy actor.
+pub struct DummyActor;
+
+/// Dummy message.
+#[derive(Debug, Clone)]
+pub struct DummyMessage;
+
+impl Message for DummyMessage {}
+
+/// Dummy event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DummyEvent;
+
+impl Event for DummyEvent {}
+
+impl Actor for DummyActor {
+    type Message = DummyMessage;
+    type Response = ();
+    type Event = DummyEvent;
+}
+
+#[async_trait]
+impl Handler<DummyActor> for DummyActor {
+    async fn handle(
+        &mut self,
+        _message: DummyMessage,
+        _ctx: &mut ActorContext<DummyActor>,
+    ) {
+    }
+
+    async fn on_child_error(
+        &mut self,
+        error: Error,
+        _ctx: &mut ActorContext<DummyActor>,
+    ) {
+        // Default implementation from child actor errors.
+        assert_eq!(error, Error::Send("Error".to_string()));
     }
 }
 

@@ -13,7 +13,9 @@ use std::fmt::{Error, Formatter};
 
 /// Actor path. This is a path to an actor in the actor system.
 ///
-#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct ActorPath(Vec<String>);
 
 impl ActorPath {

@@ -12,9 +12,9 @@
 //! ```
 //!
 
+pub mod database;
 pub mod error;
 mod memory;
 pub mod store;
-pub mod database;
 
 pub use error::Error;
