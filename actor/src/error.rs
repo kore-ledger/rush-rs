@@ -4,9 +4,9 @@
 //! # Errors module
 //!
 
-use crate::{Actor, ActorContext, ActorPath, Handler};
+use crate::{actor::ChildAction, Actor, ActorContext, ActorPath, Handler};
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot::Sender};
 
 use async_trait::async_trait;
 
@@ -59,24 +59,25 @@ pub enum Error {
     Functional(String),
 }
 
+/* 
 /// System error type.
 /// This type is used to send errors to the parent actor, when an error occurs in a child actor.
 /// Distinguish between errors that can be dealt with at the level of the parent actor or failures
 /// that require supervision.
 ///
-#[derive(Clone, Debug, Error, PartialEq, Serialize, Deserialize)]
+#[derive(Debug)]
 pub(crate) enum SystemError {
     /// Error.
     Error(Error),
     /// Fail.
-    Fail(Error),
+    Fail(Error, Sender<ChildAction>),
 }
 
 impl Display for SystemError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SystemError::Error(error) => write!(f, "Error: {}", error),
-            SystemError::Fail(error) => write!(f, "Fail: {}", error),
+            SystemError::Fail(error, _) => write!(f, "Fail: {}", error),
         }
     }
 }
@@ -92,6 +93,8 @@ pub trait ErrorHandler<A: Actor>: Send + Sync {
 struct ErrorMessage<A: Actor> {
     /// The error.
     error: SystemError,
+    /// The response sender.
+    sender: Option<Sender<ChildAction>>,
     /// Phantom data.
     _phantom_actor: PhantomData<A>,
 }
@@ -99,9 +102,13 @@ struct ErrorMessage<A: Actor> {
 /// Internal error message implementation.
 impl<A: Actor> ErrorMessage<A> {
     /// Creates internal error message from error.
-    pub fn new(error: SystemError) -> Self {
+    pub fn new(
+        error: SystemError,
+        sender: Option<Sender<ChildAction>>,
+    ) -> Self {
         Self {
             error,
+            sender,
             _phantom_actor: PhantomData,
         }
     }
@@ -119,8 +126,8 @@ where
             SystemError::Error(error) => {
                 actor.on_child_error(error.clone(), ctx).await;
             }
-            SystemError::Fail(error) => {
-                actor.on_child_fault(error.clone(), ctx).await;
+            SystemError::Fail(error, sender) => {
+                let action = actor.on_child_fault(error.clone(), ctx).await;
             }
         }
     }
@@ -212,3 +219,4 @@ mod tests {
         error_handler.handle(&mut actor, &mut ctx).await;
     }
 }
+*/

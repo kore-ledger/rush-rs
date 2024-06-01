@@ -5,8 +5,11 @@
 //!
 
 use crate::{
-    actor::{Actor, ActorContext, ActorLifecycle, ActorRef, Handler},
-    error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
+    actor::{
+        Actor, ActorContext, ActorLifecycle, ActorRef, ChildErrorReceiver,
+        ChildErrorSender, ChildAction, ChildError, Handler,
+    },
+    //error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
     handler::{mailbox, HandleHelper, MailboxReceiver},
     supervision::SupervisionStrategy,
     system::ActorSystem,
@@ -18,7 +21,7 @@ use tokio::{
     select,
     sync::{
         broadcast::{self, Sender as EventSender},
-        mpsc,
+        mpsc, oneshot,
     },
 };
 use tokio_util::sync::CancellationToken;
@@ -30,37 +33,37 @@ pub type InnerSender<A> = mpsc::UnboundedSender<InnerEvent<A>>;
 pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerEvent<A>>;
 
 /// Actor runner.
-pub(crate) struct ActorRunner<A: Actor, P: Actor> {
+pub(crate) struct ActorRunner<A: Actor> {
     path: ActorPath,
     actor: A,
     receiver: MailboxReceiver<A>,
     event_sender: EventSender<A::Event>,
-    error_sender: ErrorHelper<A>,
-    parent_helper: Option<ErrorHelper<P>>,
-    error_receiver: ErrorBoxReceiver<A>,
+    error_sender: ChildErrorSender,
+    parent_sender: Option<ChildErrorSender>,
+    error_receiver: ChildErrorReceiver,
     inner_sender: InnerSender<A>,
     inner_receiver: InnerReceiver<A>,
+    action_receiver: Option<oneshot::Receiver<ChildAction>>,
     token: CancellationToken,
 }
 
-impl<A, P> ActorRunner<A, P>
+impl<A> ActorRunner<A>
 where
     A: Actor + Handler<A>,
-    P: Actor + Handler<P>,
 {
     /// Creates a new actor runner and the actor reference.
     pub(crate) fn create(
         path: ActorPath,
         actor: A,
-        parent_helper: Option<ErrorHelper<P>>,
+        parent_sender: Option<ChildErrorSender>,
     ) -> (Self, ActorRef<A>) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
-        let (error_sender, error_receiver) = error_box();
+        let (error_sender, error_receiver) = mpsc::unbounded_channel();
         let (event_sender, event_receiver) = broadcast::channel(100);
         let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
         let helper = HandleHelper::new(sender);
-        let error_helper = ErrorHelper::new(error_sender);
+        //let error_helper = ErrorHelper::new(error_sender);
         let actor_ref = ActorRef::new(path.clone(), helper, event_receiver);
         let token = CancellationToken::new();
         let runner = ActorRunner {
@@ -68,11 +71,12 @@ where
             actor,
             receiver,
             event_sender,
-            error_sender: error_helper,
-            parent_helper,
+            error_sender,
+            parent_sender,
             error_receiver,
             inner_sender,
             inner_receiver,
+            action_receiver: None,
             token,
         };
         (runner, actor_ref)
@@ -113,7 +117,7 @@ where
                                 "Actor {} failed to start: {:?}",
                                 &self.path, err
                             );
-                            ctx.failed(err);
+                            ctx.set_error(err);
                             ctx.set_state(ActorLifecycle::Failed);
                         }
                     }
@@ -140,6 +144,16 @@ where
                 // State: FAILED
                 ActorLifecycle::Failed => {
                     debug!("Actor {} is faulty.", &self.path);
+                    /*if self.parent_helper.is_none() {
+                        ctx.set_state(ActorLifecycle::Stopped);
+                    }*/
+                    self.apply_supervision_strategy(
+                        A::supervision_strategy(),
+                        &mut ctx,
+                        &mut retries,
+                    )
+                    .await;
+                    /*
                     match A::supervision_strategy() {
                         SupervisionStrategy::Stop => {
                             error!("Actor '{}' failed to start!", &self.path);
@@ -174,7 +188,7 @@ where
                                         self.token = token;
                                     }
                                     Err(err) => {
-                                        ctx.failed(err);
+                                        ctx.set_error(err);
                                     }
                                 }
                             } else {
@@ -182,6 +196,7 @@ where
                             }
                         }
                     }
+                    */
                 }
                 // State: TERMINATED
                 ActorLifecycle::Terminated => {
@@ -216,15 +231,23 @@ where
                 }
                 // Handle error from `ErrorBoxReceiver`.
                 error =  self.error_receiver.recv() => {
-                    if let Some(mut error) = error {
-                        error.handle(&mut self.actor, ctx).await;
+                    if let Some(error) = error {
+                        match error {
+                            ChildError::Error { error } => self.actor.on_child_error(error, ctx).await,
+                            ChildError::Fault { error, sender } => {
+                                let action = self.actor.on_child_fault(error, ctx).await;
+                                if sender.send(action).is_err() {
+                                    error!("Can not send action to child!");
+                                }
+                            },
+                        }
                     } else {
                         break;
                     }
                 }
                 // Handle inner event from `inner_receiver`.
-                event = self.inner_receiver.recv() => {
-                    if let Some(event) = event {
+                recv = self.inner_receiver.recv() => {
+                    if let Some(event) = recv {
                         self.inner_handle(event).await;
                     } else {
                         break;
@@ -249,10 +272,10 @@ where
                 }
             },
             InnerEvent::Error(error) => {
-                if let Some(parent_helper) = self.parent_helper.as_mut() {
+                if let Some(parent_helper) = self.parent_sender.as_mut() {
+                    // Send error to parent.
                     parent_helper
-                        .send(SystemError::Error(error))
-                        .await
+                        .send(ChildError::Error { error })
                         .unwrap_or_else(|err| {
                             error!(
                                 "Failed to send error to parent actor: {:?}",
@@ -262,22 +285,75 @@ where
                 }
             }
             InnerEvent::Fail(error) => {
-                if let Some(parent_helper) = self.parent_helper.as_mut() {
+                if let Some(parent_helper) = self.parent_sender.as_mut() {
+                    let (action_sender, action_receiver) = oneshot::channel();
+                    //self.action_receiver = Some(action_receiver);
                     parent_helper
-                        .send(SystemError::Fail(error))
-                        .await
+                        .send(ChildError::Fault{ error, sender: action_sender})
                         .unwrap_or_else(|err| {
                             error!(
                                 "Failed to send fail to parent actor: {:?}",
                                 err
                             );
                         });
+                    if let action = action_receiver.await.is_err() {
+                        error!("Failed to receive action from parent actor");
+                    };
+                }
+            }
+        }
+    }
+
+    /// Apply supervision strategy.
+    /// If the actor fails, the strategy is applied.
+    ///
+    async fn apply_supervision_strategy(
+        &mut self,
+        strategy: SupervisionStrategy,
+        ctx: &mut ActorContext<A>,
+        retries: &mut usize,
+    ) {
+        match strategy {
+            SupervisionStrategy::Stop => {
+                error!("Actor '{}' failed to start!", &self.path);
+                ctx.set_state(ActorLifecycle::Stopped);
+            }
+            SupervisionStrategy::Retry(mut retry_strategy) => {
+                debug!(
+                    "Restarting actor with retry strategy: {:?}",
+                    &retry_strategy
+                );
+                if *retries < retry_strategy.max_retries()
+                    && ctx.state() == &ActorLifecycle::Failed
+                {
+                    debug!("retries: {}", &retries);
+                    if let Some(duration) = retry_strategy.next_backoff() {
+                        debug!("Backoff for {:?}", &duration);
+                        tokio::time::sleep(duration).await;
+                    }
+                    *retries += 1;
+                    let error = ctx.error();
+                    match ctx.restart(&mut self.actor, error.as_ref()).await {
+                        Ok(_) => {
+                            ctx.set_state(ActorLifecycle::Started);
+                            *retries = 0;
+                            let token = CancellationToken::new();
+                            ctx.set_token(token.clone());
+                            self.token = token;
+                        }
+                        Err(err) => {
+                            ctx.set_error(err);
+                        }
+                    }
+                } else {
+                    ctx.set_state(ActorLifecycle::Stopped);
                 }
             }
         }
     }
 }
 
+/// Inner event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InnerEvent<A: Actor> {
     Event(A::Event),

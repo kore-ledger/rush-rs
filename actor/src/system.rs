@@ -8,7 +8,7 @@
 //!
 
 use crate::{
-    actor::DummyActor, error::ErrorHelper, runner::ActorRunner, Actor,
+    actor::ChildErrorSender, runner::ActorRunner, Actor,
     ActorPath, ActorRef, Error, Handler,
 };
 
@@ -50,15 +50,14 @@ impl ActorSystem {
 
     /// Creates an actor in this actor system with the given path and actor type.
     /// If the actor already exists, an error is returned.
-    pub(crate) async fn create_actor_path<A, P>(
+    pub(crate) async fn create_actor_path<A>(
         &self,
         path: ActorPath,
         actor: A,
-        error_helper: Option<ErrorHelper<P>>,
+        error_helper: Option<ChildErrorSender>,
     ) -> Result<ActorRef<A>, Error>
     where
         A: Actor + Handler<A>,
-        P: Actor + Handler<P>,
     {
         // Check if the actor already exists.
         let mut actors = self.actors.write().await;
@@ -110,20 +109,19 @@ impl ActorSystem {
         A: Actor + Handler<A>,
     {
         let path = ActorPath::from("/user") / name;
-        self.create_actor_path::<A, DummyActor>(path, actor, None)
+        self.create_actor_path::<A>(path, actor, None)
             .await
     }
 
     /// Retrieve or create a new actor on this actor system if it does not exist yet.
-    pub(crate) async fn get_or_create_actor_path<A, P, F>(
+    pub(crate) async fn get_or_create_actor_path<A, F>(
         &self,
         path: &ActorPath,
-        error_helper: Option<ErrorHelper<P>>,
+        error_helper: Option<ChildErrorSender>,
         actor_fn: F,
     ) -> Result<ActorRef<A>, Error>
     where
         A: Actor + Handler<A>,
-        P: Actor + Handler<P>,
         F: FnOnce() -> A,
     {
         let actors = self.actors.read().await;
@@ -162,7 +160,7 @@ impl ActorSystem {
         F: FnOnce() -> A,
     {
         let path = ActorPath::from("/user") / name;
-        self.get_or_create_actor_path::<A, DummyActor, F>(&path, None, actor_fn)
+        self.get_or_create_actor_path::<A, F>(&path, None, actor_fn)
             .await
     }
 

@@ -28,7 +28,7 @@ mod supervision;
 mod system;
 
 pub use actor::{
-    Actor, ActorContext, ActorRef, Event, Handler, Message, Response,
+    Actor, ActorContext, ActorRef, Event, Handler, Message, Response, ChildAction,
 };
 pub use error::Error;
 pub use path::ActorPath;

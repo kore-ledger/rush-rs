@@ -9,14 +9,13 @@
 //!
 
 use crate::{
-    error::ErrorHelper,
     handler::HandleHelper,
     runner::{InnerEvent, InnerSender},
     supervision::SupervisionStrategy,
     ActorPath, ActorSystem, Error,
 };
 
-use tokio::sync::broadcast::Receiver as EventReceiver;
+use tokio::sync::{broadcast::Receiver as EventReceiver, mpsc, oneshot};
 
 use tokio_util::sync::CancellationToken;
 
@@ -40,8 +39,8 @@ pub struct ActorContext<A: Actor> {
     lifecycle: ActorLifecycle,
     /// Error in the actor.
     error: Option<Error>,
-    /// Error sender helper
-    error_sender: ErrorHelper<A>,
+    /// The error sender to send errors to the parent.
+    error_sender: ChildErrorSender,
     /// Inner sender.
     inner_sender: InnerSender<A>,
     /// Cancellation token.
@@ -72,7 +71,7 @@ where
         path: ActorPath,
         system: ActorSystem,
         token: CancellationToken,
-        error_sender: ErrorHelper<A>,
+        error_sender: ChildErrorSender,
         inner_sender: InnerSender<A>,
     ) -> Self {
         Self {
@@ -90,7 +89,7 @@ where
     /// Dummy context for tests.
     #[cfg(test)]
     pub fn dummy(
-        error_helper: ErrorHelper<A>,
+        error_sender: ChildErrorSender,
         inner_sender: InnerSender<A>,
     ) -> Self {
         Self {
@@ -98,7 +97,7 @@ where
             system: ActorSystem::default(),
             lifecycle: ActorLifecycle::Created,
             error: None,
-            error_sender: error_helper,
+            error_sender,
             inner_sender,
             token: CancellationToken::new(),
             phantom_a: PhantomData,
@@ -155,7 +154,6 @@ where
         self.inner_sender
             .send(InnerEvent::Event(event))
             .map_err(|_| Error::SendEvent)
-        //self.event_sender.send(event).map_err(|_| Error::SendEvent)
     }
 
     /// Emits an error.
@@ -172,10 +170,10 @@ where
     ///
     /// Returns an error if the error could not be emitted.
     ///
-    pub async fn emit_error(&self, error: Error) -> Result<(), Error> {
+    pub async fn emit_error(&mut self, error: Error) -> Result<(), Error> {
         self.inner_sender
             .send(InnerEvent::Error(error))
-            .map_err(|error| Error::Send(format!("{:?}", error)))
+            .map_err(|_| Error::Send("Error".to_string()))
     }
 
     /// Emits a fail.
@@ -193,10 +191,11 @@ where
     ///
     /// Returns an error if the fail could not be emitted.
     ///
-    pub async fn emit_fail(&self, error: Error) -> Result<(), Error> {
+    pub async fn emit_fail(&mut self, error: Error) -> Result<(), Error> {
+        // Send fail to parent actor.
         self.inner_sender
-            .send(InnerEvent::Fail(error))
-            .map_err(|error| Error::Send(format!("{:?}", error)))
+            .send(InnerEvent::Fail(error.clone()))
+            .map_err(|_| Error::Send("Error".to_string()))
     }
 
     /// Create a child actor under this actor.
@@ -312,7 +311,7 @@ where
     ///
     /// * `state` - The lifecycle state of the actor.
     ///
-    pub fn set_state(&mut self, state: ActorLifecycle) {
+    pub(crate) fn set_state(&mut self, state: ActorLifecycle) {
         self.lifecycle = state;
     }
 
@@ -322,7 +321,7 @@ where
     ///
     /// Returns the error of the actor.
     ///
-    pub fn error(&self) -> Option<Error> {
+    pub(crate) fn error(&self) -> Option<Error> {
         self.error.clone().or(None)
     }
 
@@ -332,7 +331,17 @@ where
     ///
     /// * `error` - The error of the actor.
     ///
-    pub fn failed(&mut self, error: Error) {
+    pub(crate) fn set_error(&mut self, error: Error) {
+        self.error = Some(error);
+    }
+
+    /// Emits a unrrecoverable error.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - The error of the actor.
+    ///
+    pub(crate) fn failed(&mut self, error: Error) {
         self.error = Some(error);
         self.token.cancel();
     }
@@ -361,6 +370,40 @@ pub enum ActorLifecycle {
     Stopped,
     /// The actor is terminated.
     Terminated,
+}
+
+/// The action that a child actor will take when an error occurs.
+#[derive(Debug, Clone)]
+pub enum ChildAction {
+    /// The child actor will stop.
+    Stop,
+    /// The child actor will start.
+    Start,
+    /// The child actor will restart.
+    Restart,
+}
+
+/// Child error receiver.
+pub(crate) type ChildErrorReceiver = mpsc::UnboundedReceiver<ChildError>;
+
+/// Child error sender.
+pub(crate) type ChildErrorSender = mpsc::UnboundedSender<ChildError>;
+
+/// Child error.
+///
+pub(crate) enum ChildError {
+    /// Error in child.
+    Error { 
+        /// The error that caused the failure.
+        error: Error,
+    },
+    /// Fault in child.
+    Fault {
+        /// The error that caused the failure.
+        error: Error,
+        /// The sender will communicate the action to be carried out to the child.
+        sender: oneshot::Sender<ChildAction>,
+    },
 }
 
 /// The `Actor` trait is the main trait that actors must implement.
@@ -494,11 +537,11 @@ pub trait Handler<A: Actor>: Send + Sync {
     async fn on_child_error(
         &mut self,
         error: Error,
-        ctx: &mut ActorContext<A>,
+        _ctx: &mut ActorContext<A>,
     ) {
         debug!("Handling error: {:?}", error);
         // Default implementation from child actor errors.
-        self.on_child_fault(error, ctx).await;
+        //self.on_child_fault(error, ctx).await;
     }
 
     /// Called when a fault occurs in a child actor.
@@ -521,9 +564,10 @@ pub trait Handler<A: Actor>: Send + Sync {
         &mut self,
         error: Error,
         _ctx: &mut ActorContext<A>,
-    ) {
-        debug!("Handling fault: {:?}", error);
+    ) -> ChildAction {
         // Default implementation from child actor errors.
+        debug!("Handling fault: {:?}", error);
+        ChildAction::Stop
     }
 }
 
