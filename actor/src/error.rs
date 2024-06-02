@@ -4,17 +4,12 @@
 //! # Errors module
 //!
 
-use crate::{actor::ChildAction, Actor, ActorContext, ActorPath, Handler};
+use crate::ActorPath;
 
-use tokio::sync::{mpsc, oneshot::Sender};
-
-use async_trait::async_trait;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, error};
 
-use std::{fmt::Display, marker::PhantomData};
 
 // TODO: We should improve the error handling in the actor system.
 

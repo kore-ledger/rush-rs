@@ -179,7 +179,7 @@ impl ActorSystem {
         paths.reverse();
         let mut actors = self.actors.write().await;
         for path in &paths {
-            actors.remove(path);
+            actors.remove(path); 
         }
     }
 

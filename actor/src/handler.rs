@@ -129,6 +129,11 @@ where
         }
     }
 
+    /// Closes the sender.
+    pub async fn close(&self) {
+        self.sender.closed().await;
+    }
+
     /// True if the sender is closed.
     pub fn is_closed(&self) -> bool {
         self.sender.is_closed()

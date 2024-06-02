@@ -193,6 +193,7 @@ where
     ///
     pub async fn emit_fail(&mut self, error: Error) -> Result<(), Error> {
         // Send fail to parent actor.
+        self.token.cancel();
         self.inner_sender
             .send(InnerEvent::Fail(error.clone()))
             .map_err(|_| Error::Send("Error".to_string()))
@@ -335,17 +336,6 @@ where
         self.error = Some(error);
     }
 
-    /// Emits a unrrecoverable error.
-    ///
-    /// # Arguments
-    ///
-    /// * `error` - The error of the actor.
-    ///
-    pub(crate) fn failed(&mut self, error: Error) {
-        self.error = Some(error);
-        self.token.cancel();
-    }
-
     /// Sets the cancelation token.
     ///
     /// # Arguments
@@ -364,6 +354,8 @@ pub enum ActorLifecycle {
     Created,
     /// The actor is started.
     Started,
+    /// The actor is restarted.
+    Restarted,
     /// The actor is failed.
     Failed,
     /// The actor is stopped.
@@ -391,7 +383,7 @@ pub(crate) type ChildErrorSender = mpsc::UnboundedSender<ChildError>;
 
 /// Child error.
 ///
-pub(crate) enum ChildError {
+pub enum ChildError {
     /// Error in child.
     Error { 
         /// The error that caused the failure.
