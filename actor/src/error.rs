@@ -6,10 +6,8 @@
 
 use crate::ActorPath;
 
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-
 
 // TODO: We should improve the error handling in the actor system.
 
@@ -54,7 +52,7 @@ pub enum Error {
     Functional(String),
 }
 
-/* 
+/*
 /// System error type.
 /// This type is used to send errors to the parent actor, when an error occurs in a child actor.
 /// Distinguish between errors that can be dealt with at the level of the parent actor or failures

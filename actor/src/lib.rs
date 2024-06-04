@@ -28,7 +28,8 @@ mod supervision;
 mod system;
 
 pub use actor::{
-    Actor, ActorContext, ActorRef, Event, Handler, Message, Response, ChildAction,
+    Actor, ActorContext, ActorRef, ChildAction, Event, Handler, Message,
+    Response,
 };
 pub use error::Error;
 pub use path::ActorPath;
@@ -36,4 +37,4 @@ pub use supervision::{
     ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
     RetryStrategy, SupervisionStrategy,
 };
-pub use system::ActorSystem;
+pub use system::{ActorSystem, SystemRunner, SystemRef};

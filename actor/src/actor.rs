@@ -12,7 +12,8 @@ use crate::{
     handler::HandleHelper,
     runner::{InnerEvent, InnerSender},
     supervision::SupervisionStrategy,
-    ActorPath, ActorSystem, Error,
+    system::{SystemEvent, SystemRef},
+    ActorPath, Error,
 };
 
 use tokio::sync::{broadcast::Receiver as EventReceiver, mpsc, oneshot};
@@ -34,7 +35,7 @@ pub struct ActorContext<A: Actor> {
     /// The path of the actor.
     path: ActorPath,
     /// The actor system.
-    system: ActorSystem,
+    system: SystemRef,
     /// The actor lifecycle.
     lifecycle: ActorLifecycle,
     /// Error in the actor.
@@ -67,9 +68,9 @@ where
     ///
     /// Returns a new actor context.
     ///
-    pub fn new(
+    pub(crate) fn new(
         path: ActorPath,
-        system: ActorSystem,
+        system: SystemRef,
         token: CancellationToken,
         error_sender: ChildErrorSender,
         inner_sender: InnerSender<A>,
@@ -82,24 +83,6 @@ where
             error_sender,
             inner_sender,
             token,
-            phantom_a: PhantomData,
-        }
-    }
-
-    /// Dummy context for tests.
-    #[cfg(test)]
-    pub fn dummy(
-        error_sender: ChildErrorSender,
-        inner_sender: InnerSender<A>,
-    ) -> Self {
-        Self {
-            path: ActorPath::from("/user/dummy"),
-            system: ActorSystem::default(),
-            lifecycle: ActorLifecycle::Created,
-            error: None,
-            error_sender,
-            inner_sender,
-            token: CancellationToken::new(),
             phantom_a: PhantomData,
         }
     }
@@ -132,7 +115,7 @@ where
     ///
     /// Returns the actor system.
     ///
-    pub fn system(&self) -> &ActorSystem {
+    pub fn system(&self) -> &SystemRef {
         &self.system
     }
 
@@ -193,10 +176,17 @@ where
     ///
     pub async fn emit_fail(&mut self, error: Error) -> Result<(), Error> {
         // Send fail to parent actor.
-        self.token.cancel();
+        //self.token.cancel();
         self.inner_sender
             .send(InnerEvent::Fail(error.clone()))
             .map_err(|_| Error::Send("Error".to_string()))
+    }
+
+    /// Stop the actor.
+    pub async fn stop(&mut self) {
+        self.set_state(ActorLifecycle::Stopped);
+        self.token.cancel();
+        self.system.remove_actor(self.path()).await;
     }
 
     /// Create a child actor under this actor.
@@ -288,7 +278,8 @@ where
     ///
     pub async fn stop_child(&self, name: &str) {
         let path = self.path.clone() / name;
-        self.system.stop_actor(&path).await;
+        //self.system.stop_actor(&path).await;
+        self.system.send_event(SystemEvent::StopActor(path)).await;
     }
 
     /// Returns the lifecycle state of the actor.
@@ -373,6 +364,8 @@ pub enum ChildAction {
     Start,
     /// The child actor will restart.
     Restart,
+    /// Delegate the action to the child supervision strategy.
+    Delegate,
 }
 
 /// Child error receiver.
@@ -385,7 +378,7 @@ pub(crate) type ChildErrorSender = mpsc::UnboundedSender<ChildError>;
 ///
 pub enum ChildError {
     /// Error in child.
-    Error { 
+    Error {
         /// The error that caused the failure.
         error: Error,
     },
@@ -731,6 +724,9 @@ mod test {
     use super::*;
 
     use serde::{Deserialize, Serialize};
+    use tokio::sync::{mpsc, RwLock};
+
+    use std::{collections::HashMap, sync::Arc};
 
     #[derive(Debug, Clone)]
     struct TestActor {
@@ -773,7 +769,10 @@ mod test {
 
     #[tokio::test]
     async fn test_actor() {
-        let system = ActorSystem::default();
+        let (event_sender, _event_receiver) = mpsc::channel(100);
+        let actors = Arc::new(RwLock::new(HashMap::new()));
+
+        let system = SystemRef::new(actors, event_sender);
         let actor = TestActor { counter: 0 };
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
         actor_ref.tell(TestMessage(10)).await.unwrap();

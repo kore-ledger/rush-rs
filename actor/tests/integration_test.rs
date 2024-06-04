@@ -1,13 +1,15 @@
 // Integrations tests for the actor module
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ActorSystem, Error, Event,
-    ChildAction, Handler, Message, Response,
+    ActorSystem, Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error, Event, 
+    Handler, Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use tracing::error;
+use tracing_subscriber::EnvFilter;
+use tracing_test::traced_test;
 
 // Defines parent actor
 #[derive(Debug, Clone)]
@@ -198,9 +200,15 @@ impl Handler<ChildActor> for ChildActor {
     }
 }
 
+
 #[tokio::test]
 async fn test_actor() {
-    let system = ActorSystem::default();
+    let (system, mut runner) = ActorSystem::create();
+    // Init runner.
+    tokio::spawn(async move {
+        runner.run().await;
+    });
+
     let parent = TestActor { state: 0 };
     let parent_ref = system.create_root_actor("parent", parent).await.unwrap();
 
@@ -219,12 +227,17 @@ async fn test_actor() {
     let event = recv.recv().await.unwrap();
     assert_eq!(event.0, 10);
 
-    system.stop_actor(&parent_ref.path()).await;
+    
 }
 
 #[tokio::test]
 async fn test_actor_error() {
-    let system = ActorSystem::default();
+    let (system, mut runner) = ActorSystem::create();
+    // Init runner.
+    tokio::spawn(async move {
+        runner.run().await;
+    });
+
     let parent = TestActor { state: 0 };
     let parent_ref = system.create_root_actor("parent", parent).await.unwrap();
     let mut receiver = parent_ref.subscribe();
@@ -236,14 +249,29 @@ async fn test_actor_error() {
         assert_eq!(event.0, 0);
         break;
     }
-    system.stop_actor(&parent_ref.path()).await;
+    //system.stop_actor(&parent_ref.path()).await;
 }
 
 #[tokio::test]
+#[traced_test]
 async fn test_actor_fault() {
-    let system = ActorSystem::default();
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .try_init();
+
+    let (system, mut runner) = ActorSystem::create();
+    // Init runner.
+    tokio::spawn(async move {
+        runner.run().await;
+    });
     let parent = TestActor { state: 0 };
     let parent_ref = system.create_root_actor("parent", parent).await.unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    let child_ref = system
+        .get_actor::<ChildActor>(&ActorPath::from("/user/parent/child"))
+        .await;
+    assert!(child_ref.is_some());
+
     let mut receiver = parent_ref.subscribe();
     parent_ref.tell(TestCommand::Increment(110)).await.unwrap();
     let response = parent_ref.ask(TestCommand::GetState).await.unwrap();
@@ -253,5 +281,12 @@ async fn test_actor_fault() {
         assert_eq!(event.0, 100);
         break;
     }
-    system.stop_actor(&parent_ref.path()).await;
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    let child_ref = system
+        .get_actor::<ChildActor>(&ActorPath::from("/user/parent/child"))
+        .await;
+    assert!(child_ref.is_none());
+
 }
+

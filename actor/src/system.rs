@@ -8,11 +8,12 @@
 //!
 
 use crate::{
-    actor::ChildErrorSender, runner::ActorRunner, Actor,
-    ActorPath, ActorRef, Error, Handler,
+    actor::ChildErrorSender, runner::ActorRunner, Actor, ActorPath, ActorRef,
+    Error, Handler,
 };
 
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
+use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error};
 
@@ -20,13 +21,62 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 
 /// Actor system.
 ///
-#[derive(Clone, Default)]
-pub struct ActorSystem {
-    actors:
-        Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
+pub struct ActorSystem {}
+
+/// Default implementation for `ActorSystem`.
+impl ActorSystem {
+    /// Create a new actor system.
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple with the system reference and the system runner.
+    pub fn create() -> (SystemRef, SystemRunner) {
+        let (event_sender, event_receiver) = mpsc::channel(100);
+        let actors = Arc::new(RwLock::new(HashMap::new()));
+        let token = CancellationToken::new();
+        let system = SystemRef::new(actors.clone(), event_sender);
+        let runner = SystemRunner::new(actors, token, event_receiver);
+        (system, runner)
+    }
 }
 
-impl ActorSystem {
+/// System event.
+///
+#[derive(Debug, Clone)]
+pub enum SystemEvent {
+    /// Actor has been stopped (and childs).
+    StopActor(ActorPath),
+
+    /// Stop the actor system.
+    StopSystem,
+}
+
+/// System reference.
+///
+#[derive(Clone)]
+pub struct SystemRef {
+    /// The actors running in this actor system.
+    actors:
+        Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
+
+    /// The event sender.
+    event_sender: mpsc::Sender<SystemEvent>,
+}
+
+impl SystemRef {
+    /// Create system reference.
+    pub fn new(
+        actors: Arc<
+            RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>,
+        >,
+        event_sender: mpsc::Sender<SystemEvent>,
+    ) -> Self {
+        SystemRef {
+            actors,
+            event_sender,
+        }
+    }
+
     /// Retrieves an actor running in this actor system. If actor does not exist, a None
     /// is returned instead.
     ///
@@ -109,8 +159,7 @@ impl ActorSystem {
         A: Actor + Handler<A>,
     {
         let path = ActorPath::from("/user") / name;
-        self.create_actor_path::<A>(path, actor, None)
-            .await
+        self.create_actor_path::<A>(path, actor, None).await
     }
 
     /// Retrieve or create a new actor on this actor system if it does not exist yet.
@@ -164,6 +213,80 @@ impl ActorSystem {
             .await
     }
 
+    /// Remove an actor from this actor system.
+    /// If the actor does not exist, nothing happens.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path of the actor to remove.
+    ///
+    pub async fn remove_actor(&self, path: &ActorPath) {
+        let mut actors = self.actors.write().await;
+        actors.remove(path);
+    }
+
+    /// Send a system event.
+    pub async fn send_event(&self, event: SystemEvent) {
+        if let Err(error) = self.event_sender.send(event).await {
+            error!("Failed to send event! {}", error.to_string());
+        }
+    }
+}
+
+/// System runner.
+pub struct SystemRunner {
+    /// The actors running in this actor system.
+    actors:
+        Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
+
+    /// The cancellation token for the actor system.
+    token: CancellationToken,
+
+    /// The event receiver.
+    event_receiver: mpsc::Receiver<SystemEvent>,
+}
+
+impl SystemRunner {
+    /// Create a new system runner.
+    pub(crate) fn new(
+        actors: Arc<
+            RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>,
+        >,
+        token: CancellationToken,
+        event_receiver: mpsc::Receiver<SystemEvent>,
+    ) -> Self {
+        Self {
+            actors,
+            token,
+            event_receiver,
+        }
+    }
+
+    /// Run the actor system.
+    pub async fn run(&mut self) {
+        debug!("Running actor system...");
+        loop {
+            tokio::select! {
+                Some(event) = self.event_receiver.recv() => {
+                    match event {
+                        SystemEvent::StopActor(path) => {
+                            debug!("Stopping actor '{}'...", &path);
+                            self.stop_actor(&path).await;
+                        }
+                        SystemEvent::StopSystem => {
+                            debug!("Stopping actor system...");
+                            self.token.cancel();
+                        }
+                    }
+                }
+                _ = self.token.cancelled() => {
+                    debug!("Actor system stopped.");
+                    break;
+                }
+            }
+        }
+    }
+
     /// Stops the actor on this actor system. All its children will also be stopped.
     /// If the actor does not exist, nothing happens.
     ///
@@ -171,7 +294,7 @@ impl ActorSystem {
     ///
     /// * `path` - The path of the actor to stop.
     ///
-    pub async fn stop_actor(&self, path: &ActorPath) {
+    async fn stop_actor(&self, path: &ActorPath) {
         debug!("Stopping actor '{}'...", &path);
         let mut paths: Vec<ActorPath> = vec![path.clone()];
         paths.extend(self.children(path).await);
@@ -179,7 +302,7 @@ impl ActorSystem {
         paths.reverse();
         let mut actors = self.actors.write().await;
         for path in &paths {
-            actors.remove(path); 
+            actors.remove(path);
         }
     }
 
@@ -193,5 +316,29 @@ impl ActorSystem {
             }
         }
         children
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    use tracing_test::traced_test;
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_stop_actor_system() {
+        let (system, mut runner) = ActorSystem::create();
+
+        tokio::spawn(async move {
+            runner.run().await;
+        });
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        assert!(logs_contain("Running actor system..."));
+        system.send_event(SystemEvent::StopSystem).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        assert!(logs_contain("Stopping actor system..."));
+        assert!(logs_contain("Actor system stopped."));
     }
 }
