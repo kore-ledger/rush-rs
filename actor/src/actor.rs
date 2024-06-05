@@ -10,9 +10,9 @@
 
 use crate::{
     handler::HandleHelper,
-    runner::{InnerEvent, InnerSender},
+    runner::{InnerMessage, InnerSender},
     supervision::SupervisionStrategy,
-    system::{SystemEvent, SystemRef},
+    system::SystemRef,
     ActorPath, Error,
 };
 
@@ -119,7 +119,7 @@ where
         &self.system
     }
 
-    /// Emits an event.
+    /// Emits an event to subscribers.
     ///
     /// # Arguments
     ///
@@ -127,15 +127,35 @@ where
     ///
     /// # Returns
     ///
-    /// Returns the number of subscribers that received the event.
+    /// Returns a void result.
     ///
     /// # Errors
     ///
     /// Returns an error if the event could not be emitted.
     ///
-    pub async fn emit_event(&self, event: A::Event) -> Result<(), Error> {
+    pub async fn publish_event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerEvent::Event(event))
+            .send(InnerMessage::Event{event, publish: true})
+            .map_err(|_| Error::SendEvent)
+    }
+
+    /// Emits an event to inner handler.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `event` - The event to emit.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a void result.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the event could not be emitted.
+    /// 
+    pub async fn event(&self, event: A::Event) -> Result<(), Error> {
+        self.inner_sender
+            .send(InnerMessage::Event{event, publish: false})
             .map_err(|_| Error::SendEvent)
     }
 
@@ -155,7 +175,7 @@ where
     ///
     pub async fn emit_error(&mut self, error: Error) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerEvent::Error(error))
+            .send(InnerMessage::Error(error))
             .map_err(|_| Error::Send("Error".to_string()))
     }
 
@@ -178,7 +198,7 @@ where
         // Send fail to parent actor.
         //self.token.cancel();
         self.inner_sender
-            .send(InnerEvent::Fail(error.clone()))
+            .send(InnerMessage::Fail(error.clone()))
             .map_err(|_| Error::Send("Error".to_string()))
     }
 
@@ -268,18 +288,6 @@ where
                 actor_fn,
             )
             .await
-    }
-
-    /// Stops the child actor.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the child actor.
-    ///
-    pub async fn stop_child(&self, name: &str) {
-        let path = self.path.clone() / name;
-        //self.system.stop_actor(&path).await;
-        self.system.send_event(SystemEvent::StopActor(path)).await;
     }
 
     /// Returns the lifecycle state of the actor.
@@ -434,7 +442,7 @@ pub trait Actor: Send + Sync + Sized + 'static {
     ///
     async fn pre_start(
         &mut self,
-        _context: &ActorContext<Self>,
+        _context: &mut ActorContext<Self>,
     ) -> Result<(), Error> {
         Ok(())
     }
@@ -496,11 +504,29 @@ pub trait Handler<A: Actor>: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the message could not be handled.
-    async fn handle(
+    async fn handle_message(
         &mut self,
         msg: A::Message,
         ctx: &mut ActorContext<A>,
     ) -> A::Response;
+
+    /// Handle an event.
+    /// Override this method to define what should happen when an internal event is emitted by the
+    /// actor.
+    /// By default it does nothing.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `event` - The event to handle.
+    /// * `ctx` - The actor context.
+    /// 
+    async fn handle_event(
+        &mut self,
+        _event: A::Event,
+        _ctx: &mut ActorContext<A>,
+    ) {
+        // Default implementation.
+    }
 
     /// Called when an error occurs in a child actor.
     /// Override this method to define what should happen when an error occurs in a child actor.
@@ -631,6 +657,14 @@ where
         self.sender.ask(message).await
     }
 
+    /// Stops the actor.
+    /// This will stop the actor and remove it from the actor system.
+    /// The actor will not be able to receive any more messages.
+    /// 
+    pub async fn stop(&self) {
+        self.sender.stop().await;
+    }
+
     /// Returns the path of the actor.
     ///
     /// # Returns
@@ -701,7 +735,7 @@ impl Actor for DummyActor {
 
 #[async_trait]
 impl Handler<DummyActor> for DummyActor {
-    async fn handle(
+    async fn handle_message(
         &mut self,
         _message: DummyMessage,
         _ctx: &mut ActorContext<DummyActor>,
@@ -725,6 +759,8 @@ mod test {
 
     use serde::{Deserialize, Serialize};
     use tokio::sync::{mpsc, RwLock};
+
+    use tracing_test::traced_test;
 
     use std::{collections::HashMap, sync::Arc};
 
@@ -755,19 +791,20 @@ mod test {
 
     #[async_trait]
     impl Handler<TestActor> for TestActor {
-        async fn handle(
+        async fn handle_message(
             &mut self,
             msg: TestMessage,
             ctx: &mut ActorContext<TestActor>,
         ) -> TestResponse {
             let value = msg.0;
             self.counter += value;
-            ctx.emit_event(TestEvent(self.counter)).await.unwrap();
+            ctx.publish_event(TestEvent(self.counter)).await.unwrap();
             TestResponse(self.counter)
         }
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn test_actor() {
         let (event_sender, _event_receiver) = mpsc::channel(100);
         let actors = Arc::new(RwLock::new(HashMap::new()));
@@ -783,5 +820,7 @@ mod test {
         assert_eq!(event.0, 10);
         let event = recv.recv().await.unwrap();
         assert_eq!(event.0, 20);
+        actor_ref.stop().await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }
 }

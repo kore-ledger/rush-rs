@@ -26,7 +26,7 @@ struct ActorMessage<A>
 where
     A: Actor + Handler<A>,
 {
-    message: A::Message,
+    message: Option<A::Message>,
     rsvp: Option<oneshot::Sender<A::Response>>,
     _phantom_actor: PhantomData<A>,
 }
@@ -38,7 +38,7 @@ where
 {
     /// Creates internal actor message from message and optional reponse sender.
     pub fn new(
-        message: A::Message,
+        message: Option<A::Message>,
         rsvp: Option<oneshot::Sender<A::Response>>,
     ) -> Self {
         debug!("Creating new internal actor message.");
@@ -58,13 +58,19 @@ where
 {
     async fn handle(&mut self, actor: &mut A, ctx: &mut ActorContext<A>) {
         debug!("Handling internal message.");
-        let result = actor.handle(self.message.clone(), ctx).await;
+        if let Some(message) = &self.message {
+            debug!("Handling message.");
+            let result = actor.handle_message(message.clone(), ctx).await;
 
-        if let Some(rsvp) = self.rsvp.take() {
-            debug!("Sending back response (if any).");
-            rsvp.send(result).unwrap_or_else(|_failed| {
-                error!("Failed to send back response!");
-            })
+            if let Some(rsvp) = self.rsvp.take() {
+                debug!("Sending back response (if any).");
+                rsvp.send(result).unwrap_or_else(|_failed| {
+                    error!("Failed to send back response!");
+                })
+            }
+        } else {
+            debug!("Stopping actor.");
+            ctx.stop().await;
         }
     }
 }
@@ -102,9 +108,9 @@ where
     }
 
     /// Tell messasge to the actor.
-    pub async fn tell(&self, message: A::Message) -> Result<(), Error> {
+    pub(crate) async fn tell(&self, message: A::Message) -> Result<(), Error> {
         debug!("Telling message to actor from handle reference.");
-        let msg = ActorMessage::new(message, None);
+        let msg = ActorMessage::new(Some(message), None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to tell message! {}", error.to_string());
             Err(Error::Send(error.to_string()))
@@ -115,10 +121,10 @@ where
     }
 
     /// Ask message to the actor.
-    pub async fn ask(&self, message: A::Message) -> Result<A::Response, Error> {
+    pub(crate) async fn ask(&self, message: A::Message) -> Result<A::Response, Error> {
         debug!("Asking message to actor from handle reference.");
         let (response_sender, response_receiver) = oneshot::channel();
-        let msg = ActorMessage::new(message, Some(response_sender));
+        let msg = ActorMessage::new(Some(message), Some(response_sender));
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to ask message! {}", error.to_string());
             Err(Error::Send(error.to_string()))
@@ -126,6 +132,15 @@ where
             response_receiver
                 .await
                 .map_err(|error| Error::Send(error.to_string()))
+        }
+    }
+
+    /// Stop the actor.
+    pub(crate) async fn stop(&self) {
+        debug!("Stopping actor from handle reference.");
+        let msg = ActorMessage::new(None, None);
+        if let Err(error) = self.sender.send(Box::new(msg)) {
+            error!("Failed to stop actor! {}", error.to_string());
         }
     }
 

@@ -54,7 +54,7 @@ impl Actor for TestActor {
 
     async fn pre_start(
         &mut self,
-        ctx: &ActorContext<Self>,
+        ctx: &mut ActorContext<Self>,
     ) -> Result<(), Error> {
         let child = ChildActor { state: 0 };
         ctx.create_child("child", child).await?;
@@ -65,7 +65,7 @@ impl Actor for TestActor {
 // Implements handler for parent actor.
 #[async_trait]
 impl Handler<TestActor> for TestActor {
-    async fn handle(
+    async fn handle_message(
         &mut self,
         message: TestCommand,
         ctx: &mut ActorContext<TestActor>,
@@ -84,7 +84,7 @@ impl Handler<TestActor> for TestActor {
             }
             TestCommand::Decrement(value) => {
                 self.state -= value;
-                ctx.emit_event(TestEvent(self.state)).await.unwrap();
+                ctx.publish_event(TestEvent(self.state)).await.unwrap();
                 TestResponse::None
             }
             TestCommand::GetState => TestResponse::State(self.state),
@@ -98,7 +98,7 @@ impl Handler<TestActor> for TestActor {
         ctx: &mut ActorContext<TestActor>,
     ) {
         assert_eq!(error, Error::Functional("Value is too high".to_owned()));
-        ctx.emit_event(TestEvent(0)).await.unwrap();
+        ctx.publish_event(TestEvent(0)).await.unwrap();
     }
 
     // Handles child fault.
@@ -111,7 +111,7 @@ impl Handler<TestActor> for TestActor {
             error,
             Error::Functional("Value produces a fault".to_owned())
         );
-        ctx.emit_event(TestEvent(100)).await.unwrap();
+        ctx.publish_event(TestEvent(100)).await.unwrap();
         ChildAction::Stop
     }
 }
@@ -160,7 +160,7 @@ impl Actor for ChildActor {
 // Implements handler for child actor.
 #[async_trait]
 impl Handler<ChildActor> for ChildActor {
-    async fn handle(
+    async fn handle_message(
         &mut self,
         message: ChildCommand,
         ctx: &mut ActorContext<ChildActor>,
@@ -169,7 +169,7 @@ impl Handler<ChildActor> for ChildActor {
             ChildCommand::SetState(value) => {
                 if value <= 10 {
                     self.state = value;
-                    ctx.emit_event(ChildEvent(self.state)).await.unwrap();
+                    ctx.publish_event(ChildEvent(self.state)).await.unwrap();
                     ChildResponse::None
                 } else if value > 10 && value < 100 {
                     if ctx

@@ -5,6 +5,8 @@
 
 use crate::error::Error;
 
+use tracing::debug;
+
 /// A trait representing a database manager to create collections
 pub trait DbManager<C>: Sync + Send
 where
@@ -89,12 +91,11 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// - If the operation failed.
     ///
-    fn last(&self) -> Result<(String, Vec<u8>), Error> {
+    fn last(&self) -> Option<(String, Vec<u8>)> {
         let mut iter = self.iter(true);
-        match iter.next() {
-            Some(value) => Ok(value),
-            None => Err(Error::EntryNotFound),
-        }
+        let value = iter.next();
+        debug!("Last value: {:?}", value);
+        value 
     }
 
     /// Returns an iterator over the key-value pairs in the collection.

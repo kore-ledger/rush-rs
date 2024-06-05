@@ -17,7 +17,6 @@ use crate::{
     Error,
 };
 
-use serde::{Deserialize, Serialize};
 use tokio::{
     select,
     sync::{
@@ -30,8 +29,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error};
 
 /// Inner sender and receiver types.
-pub type InnerSender<A> = mpsc::UnboundedSender<InnerEvent<A>>;
-pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerEvent<A>>;
+pub type InnerSender<A> = mpsc::UnboundedSender<InnerMessage<A>>;
+pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerMessage<A>>;
 
 /// Actor runner.
 pub(crate) struct ActorRunner<A: Actor> {
@@ -103,7 +102,7 @@ where
                 ActorLifecycle::Created => {
                     debug!("Actor {} is created.", &self.path);
                     // Pre-start hook.
-                    match self.actor.pre_start(&ctx).await {
+                    match self.actor.pre_start(&mut ctx).await {
                         Ok(_) => {
                             debug!(
                                 "Actor '{}' has started successfully.",
@@ -221,22 +220,29 @@ where
         }
     }
 
-    /// Inner handle event.
+    /// Inner message handler.
     async fn inner_handle(
         &mut self,
-        event: InnerEvent<A>,
+        event: InnerMessage<A>,
         ctx: &mut ActorContext<A>,
     ) {
         match event {
-            InnerEvent::Event(event) => match self.event_sender.send(event) {
-                Ok(size) => {
-                    debug!("Event sent successfully to {} subscribers.", size);
+            InnerMessage::Event{ event, publish}=> {
+                if publish {
+                    // Publish event to subscribers.
+                    match self.event_sender.send(event.clone()) {
+                        Ok(size) => {
+                            debug!("Event sent successfully to {} subscribers.", size);
+                        }
+                        Err(err) => {
+                            error!("Failed to send event: {:?}", err);
+                        }
+                    }
                 }
-                Err(err) => {
-                    error!("Failed to send event: {:?}", err);
-                }
+                // Handle event.
+                self.actor.handle_event(event, ctx).await;
             },
-            InnerEvent::Error(error) => {
+            InnerMessage::Error(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     // Send error to parent.
                     parent_helper
@@ -249,7 +255,7 @@ where
                         });
                 }
             }
-            InnerEvent::Fail(error) => {
+            InnerMessage::Fail(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     let (action_sender, action_receiver) = oneshot::channel();
                     //self.action_receiver = Some(action_receiver);
@@ -338,11 +344,14 @@ where
     }
 }
 
-/// Inner event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum InnerEvent<A: Actor> {
-    Event(A::Event),
+/// Inner message.
+#[derive(Debug, Clone)]
+pub enum InnerMessage<A: Actor> {
+    /// Event
+    Event {event: A::Event, publish: bool},
+    /// Error
     Error(Error),
+    /// Fail
     Fail(Error),
 }
 
@@ -400,7 +409,7 @@ mod tests {
 
         async fn pre_start(
             &mut self,
-            _ctx: &ActorContext<Self>,
+            _ctx: &mut ActorContext<Self>,
         ) -> Result<(), Error> {
             if self.failed {
                 Err(Error::Start)
@@ -431,7 +440,7 @@ mod tests {
 
     #[async_trait]
     impl Handler<TestActor> for TestActor {
-        async fn handle(
+        async fn handle_message(
             &mut self,
             msg: TestMessage,
             ctx: &mut ActorContext<Self>,

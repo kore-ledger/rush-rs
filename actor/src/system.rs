@@ -35,7 +35,7 @@ impl ActorSystem {
         let actors = Arc::new(RwLock::new(HashMap::new()));
         let token = CancellationToken::new();
         let system = SystemRef::new(actors.clone(), event_sender);
-        let runner = SystemRunner::new(actors, token, event_receiver);
+        let runner = SystemRunner::new(token, event_receiver);
         (system, runner)
     }
 }
@@ -44,8 +44,6 @@ impl ActorSystem {
 ///
 #[derive(Debug, Clone)]
 pub enum SystemEvent {
-    /// Actor has been stopped (and childs).
-    StopActor(ActorPath),
 
     /// Stop the actor system.
     StopSystem,
@@ -56,8 +54,7 @@ pub enum SystemEvent {
 #[derive(Clone)]
 pub struct SystemRef {
     /// The actors running in this actor system.
-    actors:
-        Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
+    actors: Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
 
     /// The event sender.
     event_sender: mpsc::Sender<SystemEvent>,
@@ -231,13 +228,23 @@ impl SystemRef {
             error!("Failed to send event! {}", error.to_string());
         }
     }
+
+    /// Get the actor's children.
+    pub async fn children(&self, path: &ActorPath) -> Vec<ActorPath> {
+        let actors = self.actors.read().await;
+        let mut children = vec![];
+        for actor in actors.keys() {
+            if actor.is_child_of(path) {
+                children.push(actor.clone());
+            }
+        }
+        children
+    }
+    
 }
 
 /// System runner.
 pub struct SystemRunner {
-    /// The actors running in this actor system.
-    actors:
-        Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
 
     /// The cancellation token for the actor system.
     token: CancellationToken,
@@ -249,14 +256,10 @@ pub struct SystemRunner {
 impl SystemRunner {
     /// Create a new system runner.
     pub(crate) fn new(
-        actors: Arc<
-            RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>,
-        >,
         token: CancellationToken,
         event_receiver: mpsc::Receiver<SystemEvent>,
     ) -> Self {
         Self {
-            actors,
             token,
             event_receiver,
         }
@@ -269,11 +272,7 @@ impl SystemRunner {
             tokio::select! {
                 Some(event) = self.event_receiver.recv() => {
                     match event {
-                        SystemEvent::StopActor(path) => {
-                            debug!("Stopping actor '{}'...", &path);
-                            self.stop_actor(&path).await;
-                        }
-                        SystemEvent::StopSystem => {
+                      SystemEvent::StopSystem => {
                             debug!("Stopping actor system...");
                             self.token.cancel();
                         }
@@ -285,37 +284,6 @@ impl SystemRunner {
                 }
             }
         }
-    }
-
-    /// Stops the actor on this actor system. All its children will also be stopped.
-    /// If the actor does not exist, nothing happens.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path of the actor to stop.
-    ///
-    async fn stop_actor(&self, path: &ActorPath) {
-        debug!("Stopping actor '{}'...", &path);
-        let mut paths: Vec<ActorPath> = vec![path.clone()];
-        paths.extend(self.children(path).await);
-        paths.sort_unstable();
-        paths.reverse();
-        let mut actors = self.actors.write().await;
-        for path in &paths {
-            actors.remove(path);
-        }
-    }
-
-    /// Get the actor's children.
-    async fn children(&self, path: &ActorPath) -> Vec<ActorPath> {
-        let actors = self.actors.read().await;
-        let mut children = vec![];
-        for actor in actors.keys() {
-            if actor.is_child_of(path) {
-                children.push(actor.clone());
-            }
-        }
-        children
     }
 }
 
