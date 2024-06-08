@@ -2,20 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.2.1] - 2024-06-08
 
 ### 🚀 Features
 
 - Add actor lifecycle
+- New error handler
+- Separation between failure and error
+- New error management
+- Actor store added
+- Actor store added
+- Rocksdb & sqlite stores added
+
+### 🐛 Bug Fixes
+
+- Runner init loop error
 
 ### 📚 Documentation
 
 - Add CHANGELOG.md
 - Update README.md
+- Update CHANGELOG.md
 
 ### 🧪 Testing
 
 - Runner and integration test
+- Improving unit testing
 
 ## [0.1.0] - 2024-05-27
 
