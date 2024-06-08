@@ -202,6 +202,7 @@ where
                             },
                         }
                     } else {
+                        ctx.set_state(ActorLifecycle::Stopped);
                         break;
                     }
                 }
@@ -214,6 +215,8 @@ where
                     }
                 }
                 _ = self.token.cancelled() => {
+                    debug!("Actor {} is stopped.", &self.path);
+                    ctx.set_state(ActorLifecycle::Stopped);
                     break;
                 }
             }

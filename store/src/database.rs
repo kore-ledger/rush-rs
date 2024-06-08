@@ -265,6 +265,21 @@ macro_rules! test_store_trait {
             }
 
             #[test]
+            fn test_last() {
+                let manager = <$type>::default();
+                let mut store: $type2 =
+                    manager.create_collection("test").unwrap();
+                store.put("key1", b"value1").unwrap();
+                store.put("key2", b"value2").unwrap();
+                store.put("key3", b"value3").unwrap();
+                let last = store.last();
+                assert_eq!(
+                    last,
+                    Some(("key3".to_string(), b"value3".to_vec()))
+                );
+             }
+
+            #[test]
             fn test_get_by_range() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
