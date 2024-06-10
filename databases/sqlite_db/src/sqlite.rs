@@ -95,7 +95,7 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|_| Error::Store("open connection".to_owned()))?;
+            .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
         let query = format!("SELECT value FROM {} WHERE id = ?1", &self.table);
         let row: Vec<u8> = conn
             .query_row(&query, params![key], |row| row.get(0))
@@ -108,10 +108,10 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|_| Error::Store("SQLITE open connection".to_owned()))?;
-        let stmt = format!("INSERT INTO {} (id, value) VALUES (?1, ?2)", &self.table);
+            .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
+        let stmt = format!("INSERT OR REPLACE INTO {} (id, value) VALUES (?1, ?2)", &self.table);
         conn.execute(&stmt, params![key, data])
-            .map_err(|_| Error::Store("SQLITE insert error".to_owned()))?;
+            .map_err(|_| Error::Store("sqlite insert error".to_owned()))?;
         Ok(())
     }
 

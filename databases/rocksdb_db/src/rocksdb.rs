@@ -160,6 +160,8 @@ unsafe fn change_lifetime_const<'a, 'b, T>(x: &'a T) -> &'b T {
 mod tests {
     use super::*;
     use store::test_store_trait;
-    test_store_trait!(unit_test_rocksdb_manager:crate::rocksdb::RocksDbManager:RocksDbStore);
+    test_store_trait!{
+        unit_test_rocksdb_manager:crate::rocksdb::RocksDbManager:RocksDbStore
+    }
 }
  
