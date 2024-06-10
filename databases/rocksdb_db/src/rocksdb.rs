@@ -162,6 +162,6 @@ mod tests {
     use store::test_store_trait;
     test_store_trait!{
         unit_test_rocksdb_manager:crate::rocksdb::RocksDbManager:RocksDbStore
-    }
+    } 
 }
  
