@@ -8,7 +8,7 @@ use crate::error::Error;
 use tracing::debug;
 
 /// A trait representing a database manager to create collections
-pub trait DbManager<C>: Sync + Send
+pub trait DbManager<C>: Sync + Send + Clone
 where
     C: Collection + 'static,
 {

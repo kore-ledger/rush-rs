@@ -16,6 +16,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 /// SQLite database manager.
+#[derive(Clone)]
 pub struct SqliteManager {
     path: String,
 }

@@ -463,8 +463,8 @@ mod tests {
     async fn test_actor_root_failed() {
         let (event_sender, _) = mpsc::channel(100);
         let actors = Arc::new(RwLock::new(HashMap::new()));
-
-        let system = SystemRef::new(actors, event_sender);
+        let helpers = Arc::new(RwLock::new(HashMap::new()));
+        let system = SystemRef::new(actors, helpers, event_sender);
 
         let actor = TestActor { failed: false };
         let (mut runner, actor_ref) =

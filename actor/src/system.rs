@@ -33,8 +33,9 @@ impl ActorSystem {
     pub fn create() -> (SystemRef, SystemRunner) {
         let (event_sender, event_receiver) = mpsc::channel(100);
         let actors = Arc::new(RwLock::new(HashMap::new()));
+        let helpers = Arc::new(RwLock::new(HashMap::new()));
         let token = CancellationToken::new();
-        let system = SystemRef::new(actors.clone(), event_sender);
+        let system = SystemRef::new(actors.clone(), helpers.clone(), event_sender);
         let runner = SystemRunner::new(token, event_receiver);
         (system, runner)
     }
@@ -56,6 +57,9 @@ pub struct SystemRef {
     /// The actors running in this actor system.
     actors: Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
 
+    /// The helpers for this actor system.
+    helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
+
     /// The event sender.
     event_sender: mpsc::Sender<SystemEvent>,
 }
@@ -66,10 +70,12 @@ impl SystemRef {
         actors: Arc<
             RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>,
         >,
+        helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
         event_sender: mpsc::Sender<SystemEvent>,
     ) -> Self {
         SystemRef {
             actors,
+            helpers,
             event_sender,
         }
     }
@@ -240,6 +246,30 @@ impl SystemRef {
         }
         children
     }
+
+    /// Add a helper to the actor system.
+    pub async fn add_helper<H>(&self, name: &str, helper: H)
+    where
+        H: Any + Send + Sync + Clone + 'static,
+    {
+        let mut helpers = self.helpers.write().await;
+        helpers.insert(name.to_owned(), Box::new(helper));
+    }
+
+    /// Get a helper from the actor system.
+    /// If the helper does not exist, a None is returned.
+    pub async fn get_helper<H>(&self, name: &str) -> Option<H>
+    where
+        H: Any + Send + Sync + Clone + 'static,
+    {
+        let helpers = self.helpers.read().await;
+        match helpers
+            .get(name)
+            .and_then(|any| any.downcast_ref::<H>()) {
+            Some(helper) => Some(helper.clone()),
+            None => None,
+        }
+    }   
     
 }
 
@@ -308,5 +338,19 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         assert!(logs_contain("Stopping actor system..."));
         assert!(logs_contain("Actor system stopped."));
+    }
+
+    #[tokio::test]
+    async fn test_helpers() {
+        let (system, _) = ActorSystem::create();
+        let helper = TestHelper { value: 42 };
+        system.add_helper("test", helper).await;
+        let helper: Option<TestHelper> = system.get_helper("test").await;
+        assert_eq!(helper, Some(TestHelper { value: 42 }));
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct TestHelper {
+        pub value: i32,
     }
 }

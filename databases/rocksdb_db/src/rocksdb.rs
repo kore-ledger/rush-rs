@@ -12,9 +12,24 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 
 /// RocksDb manager.
+#[derive(Clone)]
 pub struct RocksDbManager {
     opts: Options,
     db: Arc<RwLock<DB>>,
+}
+
+impl RocksDbManager {
+    /// Create a new RocksDb manager.
+    ///
+    /// # Returns
+    ///
+    /// The RocksDb manager.
+    ///
+    pub fn new(path: &str) -> Self {
+        let db = DB::open_default(path)
+            .expect("Can not create the database.");
+        Self { opts: Options::default(), db: Arc::new(RwLock::new(db)) }
+    }
 }
 
 impl Default for RocksDbManager {

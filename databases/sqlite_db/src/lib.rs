@@ -9,3 +9,5 @@
 //pub mod sqlite;
 
 mod sqlite;
+
+pub use sqlite::{SqliteManager, SqliteCollection};

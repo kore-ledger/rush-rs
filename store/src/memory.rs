@@ -11,7 +11,7 @@ use crate::{
 
 use std::collections::BTreeMap;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MemoryManager;
 
 impl DbManager<MemoryStore> for MemoryManager {
