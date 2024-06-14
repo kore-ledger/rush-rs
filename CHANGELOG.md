@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2024-06-14
+
+### 🚀 Features
+
+- Helpers map in actor system
+- Start and stop in persistent actor
+
+### 🐛 Bug Fixes
+
+- Remove persistent.rs
+- Sqlite put & test improvement
+
+### 📚 Documentation
+
+- Update changelog
+
+### 🧪 Testing
+
+- Rocksdb test improvement
+
 ## [0.2.1] - 2024-06-08
 
 ### 🚀 Features
