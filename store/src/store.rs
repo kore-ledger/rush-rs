@@ -16,7 +16,9 @@ use crate::{
     error::Error,
 };
 
-use actor::{Actor, ActorRef, ActorContext, Event, Handler, Message, Response, Error as ActorError};
+use actor::{
+    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+};
 use async_trait::async_trait;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -28,23 +30,22 @@ use std::{fmt::Debug, marker::PhantomData};
 /// A trait representing a persistent actor.
 #[async_trait]
 pub trait PersistentActor:
-    Actor + Debug + Clone + Serialize + DeserializeOwned
+    Actor + Handler<Self> + Debug + Clone + Serialize + DeserializeOwned
 {
-    
     /// Apply an event to the actor state
     ///
     /// # Arguments
-    /// 
+    ///
     /// - event: The event to apply.
-    /// 
+    ///
     fn apply(&mut self, event: Self::Event);
 
     /// Recover the state.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// - state: The recovered state.
-    /// 
+    ///
     fn update(&mut self, state: Self) {
         *self = state;
     }
@@ -61,11 +62,25 @@ pub trait PersistentActor:
     /// The result of the operation.
     ///
     /// # Errors
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
-    async fn persist(&mut self, event: Self::Event, store: &ActorRef<Store<Self>>) -> Result<(), ActorError> {
-        let response = store.ask(StoreCommand::Persist(event.clone())).await
+    ///
+    async fn persist(
+        &mut self,
+        event: Self::Event,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        let store = match ctx.get_child::<Store<Self>>("store").await {
+            Some(store) => store,
+            None => {
+                return Err(ActorError::Store(
+                    "Can't get store actor".to_string(),
+                ))
+            }
+        };
+        let response = store
+            .ask(StoreCommand::Persist(event.clone()))
+            .await
             .map_err(|e| ActorError::Store(e.to_string()))?;
         if let StoreResponse::Persisted = response {
             self.apply(event);
@@ -76,25 +91,94 @@ pub trait PersistentActor:
     }
 
     /// Snapshot the state.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// - store: The store actor.
-    /// 
+    ///
     /// # Returns
-    /// 
-    /// The result of the operation.
-    /// 
+    ///
+    /// Void.
+    ///
     /// # Errors
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
-    async fn snapshot(&self, store: &ActorRef<Store<Self>>) -> Result<(), ActorError> {
-        store.ask(StoreCommand::Snapshot(self.clone())).await
+    ///
+    async fn snapshot(
+        &self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        let store = match ctx.get_child::<Store<Self>>("store").await {
+            Some(store) => store,
+            None => {
+                return Err(ActorError::Store(
+                    "Can't get store actor".to_string(),
+                ))
+            }
+        };
+        store
+            .ask(StoreCommand::Snapshot(self.clone()))
+            .await
             .map_err(|e| ActorError::Store(e.to_string()))?;
         Ok(())
     }
 
+    /// Start the child store and recover the state (if any).
+    ///
+    /// # Arguments
+    ///
+    /// - ctx: The actor context.
+    /// - manager: The database manager.
+    ///
+    /// # Returns
+    ///
+    /// Void.
+    ///
+    /// # Errors
+    ///
+    /// An error if the operation failed.
+    ///
+    async fn start_store<C: Collection>(
+        &mut self,
+        ctx: &mut ActorContext<Self>,
+        manager: impl DbManager<C>,
+    ) -> Result<(), ActorError> {
+        let store = Store::<Self>::new("store", manager)
+            .map_err(|e| ActorError::Store(e.to_string()))?;
+        let store = ctx.create_child("store", store).await?;
+        let response = store.ask(StoreCommand::Recover).await?;
+        if let StoreResponse::State(Some(state)) = response {
+            self.update(state);
+        }
+        Ok(())
+    }
+
+    /// Stop the child store and snapshot the state.
+    ///
+    /// # Arguments
+    ///
+    /// - ctx: The actor context.
+    ///
+    /// # Returns
+    ///
+    /// Void.
+    ///
+    /// # Errors
+    ///
+    /// An error if the operation failed.
+    ///
+    async fn stop_store(
+        &mut self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        if let Some(store) = ctx.get_child::<Store<Self>>("store").await {
+            let _ = store.ask(StoreCommand::Snapshot(self.clone())).await?;
+            store.stop().await;
+            Ok(())
+        } else {
+            Err(ActorError::Store("Can't get store".to_string()))
+        }
+    }
 }
 
 /// Store actor.
@@ -251,8 +335,6 @@ where
     type Message = StoreCommand<P>;
     type Response = StoreResponse<P>;
     type Event = StoreEvent;
-
-
 }
 
 #[async_trait]
@@ -289,7 +371,7 @@ where
                 Ok(state) => {
                     debug!("Recovered state: {:?}", state);
                     StoreResponse::State(state)
-                },
+                }
                 Err(e) => StoreResponse::Error(e),
             },
         }
@@ -301,12 +383,12 @@ mod tests {
 
     use super::*;
     use crate::memory::MemoryManager;
-    use actor::{ActorSystem, ActorRef};
+    use actor::{ActorRef, ActorSystem};
 
     use async_trait::async_trait;
 
     use tracing_test::traced_test;
-    
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestActor {
         pub value: i32,
@@ -335,20 +417,19 @@ mod tests {
 
     #[async_trait]
     impl Actor for TestActor {
-
         type Message = TestMessage;
         type Event = TestEvent;
         type Response = TestResponse;
-
 
         async fn pre_start(
             &mut self,
             ctx: &mut ActorContext<Self>,
         ) -> Result<(), ActorError> {
-            let db = Store::<Self>::new("store", MemoryManager::default()).unwrap();
-            let store = ctx.create_child("store",  db).await.unwrap();
+            let db =
+                Store::<Self>::new("store", MemoryManager::default()).unwrap();
+            let store = ctx.create_child("store", db).await.unwrap();
             let response = store.ask(StoreCommand::Recover).await.unwrap();
-            debug!("Recover response: {:?}", response); 
+            debug!("Recover response: {:?}", response);
             if let StoreResponse::State(Some(state)) = response {
                 debug!("Recovering state: {:?}", state);
                 self.update(state);
@@ -360,8 +441,12 @@ mod tests {
             &mut self,
             ctx: &mut ActorContext<Self>,
         ) -> Result<(), ActorError> {
-            let store: ActorRef<Store<Self>> = ctx.get_child("store").await.unwrap();
-            let response = store.ask(StoreCommand::Snapshot(self.clone())).await.unwrap();
+            let store: ActorRef<Store<Self>> =
+                ctx.get_child("store").await.unwrap();
+            let response = store
+                .ask(StoreCommand::Snapshot(self.clone()))
+                .await
+                .unwrap();
             if let StoreResponse::Snapshotted = response {
                 store.stop().await;
                 Ok(())
@@ -369,7 +454,6 @@ mod tests {
                 Err(ActorError::Store("Can't snapshot state".to_string()))
             }
         }
-
     }
 
     #[async_trait]
@@ -379,12 +463,10 @@ mod tests {
             self.value += event.0;
             println!("Applied event: {:?}, value {}", event, self.value);
         }
-
     }
 
     #[async_trait]
     impl Handler<TestActor> for TestActor {
-
         async fn handle_message(
             &mut self,
             msg: TestMessage,
@@ -395,10 +477,12 @@ mod tests {
                     let event = TestEvent(value);
                     ctx.event(event).await.unwrap();
                     TestResponse::None
-                },
+                }
                 TestMessage::Recover => {
-                    let store: ActorRef<Store<Self>> = ctx.get_child("store").await.unwrap();
-                    let response = store.ask(StoreCommand::Recover).await.unwrap();
+                    let store: ActorRef<Store<Self>> =
+                        ctx.get_child("store").await.unwrap();
+                    let response =
+                        store.ask(StoreCommand::Recover).await.unwrap();
                     if let StoreResponse::State(Some(state)) = response {
                         self.update(state.clone());
                         TestResponse::Value(state.value)
@@ -407,14 +491,18 @@ mod tests {
                     }
                 }
                 TestMessage::Snapshot => {
-                    let store: ActorRef<Store<Self>> = ctx.get_child("store").await.unwrap();
-                    store.ask(StoreCommand::Snapshot(self.clone())).await.unwrap();
+                    let store: ActorRef<Store<Self>> =
+                        ctx.get_child("store").await.unwrap();
+                    store
+                        .ask(StoreCommand::Snapshot(self.clone()))
+                        .await
+                        .unwrap();
                     TestResponse::None
-                },
+                }
                 TestMessage::GetValue => {
                     println!("Getting value: {}", self.value);
                     TestResponse::Value(self.value)
-                },
+                }
             }
         }
 
@@ -422,9 +510,8 @@ mod tests {
             &mut self,
             event: TestEvent,
             ctx: &mut ActorContext<TestActor>,
-        ) -> () {            
-            let store: ActorRef<Store<Self>> = ctx.get_child("store").await.unwrap();  
-            self.persist(event, &store).await.unwrap();
+        ) -> () {
+            self.persist(event, ctx).await.unwrap();
         }
     }
 
@@ -437,18 +524,24 @@ mod tests {
             runner.run().await;
         });
 
-        let db = Store::<TestActor>::new("store", MemoryManager::default()).unwrap();
+        let db =
+            Store::<TestActor>::new("store", MemoryManager::default()).unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
         let actor = TestActor { value: 0 };
-        store.tell(StoreCommand::Persist(TestEvent(10))).await.unwrap();
+        store
+            .tell(StoreCommand::Persist(TestEvent(10)))
+            .await
+            .unwrap();
 
-        store.tell(StoreCommand::Snapshot(actor.clone())).await.unwrap();
+        store
+            .tell(StoreCommand::Snapshot(actor.clone()))
+            .await
+            .unwrap();
 
         let response = store.ask(StoreCommand::Recover).await.unwrap();
         println!("Recover response: {:?}", response);
-
-    } 
+    }
 
     #[tokio::test]
     //#[traced_test]
@@ -458,7 +551,7 @@ mod tests {
         tokio::spawn(async move {
             runner.run().await;
         });
- 
+
         let actor = TestActor { value: 0 };
 
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
@@ -471,7 +564,7 @@ mod tests {
 
         actor_ref.tell(TestMessage::Snapshot).await.unwrap();
 
-        let result = actor_ref.ask(TestMessage::GetValue).await.unwrap();   
+        let result = actor_ref.ask(TestMessage::GetValue).await.unwrap();
 
         assert_eq!(result, TestResponse::Value(10));
         actor_ref.tell(TestMessage::Increment(10)).await.unwrap();
@@ -480,7 +573,6 @@ mod tests {
         let value = actor_ref.ask(TestMessage::GetValue).await.unwrap();
 
         assert_eq!(value, TestResponse::Value(20));
-
 
         actor_ref.ask(TestMessage::Recover).await.unwrap();
 
@@ -491,5 +583,4 @@ mod tests {
         actor_ref.stop().await;
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }
-
-} 
+}

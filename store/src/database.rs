@@ -95,7 +95,7 @@ pub trait Collection: Sync + Send + 'static {
         let mut iter = self.iter(true);
         let value = iter.next();
         debug!("Last value: {:?}", value);
-        value 
+        value
     }
 
     /// Returns an iterator over the key-value pairs in the collection.
@@ -277,7 +277,7 @@ macro_rules! test_store_trait {
                     last,
                     Some(("key3".to_string(), b"value3".to_vec()))
                 );
-             }
+            }
 
             #[test]
             fn test_get_by_range() {

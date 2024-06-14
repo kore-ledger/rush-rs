@@ -135,27 +135,33 @@ where
     ///
     pub async fn publish_event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerMessage::Event{event, publish: true})
+            .send(InnerMessage::Event {
+                event,
+                publish: true,
+            })
             .map_err(|_| Error::SendEvent)
     }
 
     /// Emits an event to inner handler.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `event` - The event to emit.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Returns a void result.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the event could not be emitted.
-    /// 
+    ///
     pub async fn event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerMessage::Event{event, publish: false})
+            .send(InnerMessage::Event {
+                event,
+                publish: false,
+            })
             .map_err(|_| Error::SendEvent)
     }
 
@@ -514,12 +520,12 @@ pub trait Handler<A: Actor>: Send + Sync {
     /// Override this method to define what should happen when an internal event is emitted by the
     /// actor.
     /// By default it does nothing.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `event` - The event to handle.
     /// * `ctx` - The actor context.
-    /// 
+    ///
     async fn handle_event(
         &mut self,
         _event: A::Event,
@@ -660,7 +666,7 @@ where
     /// Stops the actor.
     /// This will stop the actor and remove it from the actor system.
     /// The actor will not be able to receive any more messages.
-    /// 
+    ///
     pub async fn stop(&self) {
         self.sender.stop().await;
     }

@@ -10,4 +10,4 @@
 
 mod sqlite;
 
-pub use sqlite::{SqliteManager, SqliteCollection};
+pub use sqlite::{SqliteCollection, SqliteManager};

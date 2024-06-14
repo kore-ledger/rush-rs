@@ -37,4 +37,4 @@ pub use supervision::{
     ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
     RetryStrategy, SupervisionStrategy,
 };
-pub use system::{ActorSystem, SystemRunner, SystemRef};
+pub use system::{ActorSystem, SystemRef, SystemRunner};

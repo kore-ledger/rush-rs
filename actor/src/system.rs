@@ -35,7 +35,8 @@ impl ActorSystem {
         let actors = Arc::new(RwLock::new(HashMap::new()));
         let helpers = Arc::new(RwLock::new(HashMap::new()));
         let token = CancellationToken::new();
-        let system = SystemRef::new(actors.clone(), helpers.clone(), event_sender);
+        let system =
+            SystemRef::new(actors.clone(), helpers.clone(), event_sender);
         let runner = SystemRunner::new(token, event_receiver);
         (system, runner)
     }
@@ -45,7 +46,6 @@ impl ActorSystem {
 ///
 #[derive(Debug, Clone)]
 pub enum SystemEvent {
-
     /// Stop the actor system.
     StopSystem,
 }
@@ -55,7 +55,8 @@ pub enum SystemEvent {
 #[derive(Clone)]
 pub struct SystemRef {
     /// The actors running in this actor system.
-    actors: Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
+    actors:
+        Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
 
     /// The helpers for this actor system.
     helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
@@ -70,7 +71,9 @@ impl SystemRef {
         actors: Arc<
             RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>,
         >,
-        helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
+        helpers: Arc<
+            RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>,
+        >,
         event_sender: mpsc::Sender<SystemEvent>,
     ) -> Self {
         SystemRef {
@@ -263,19 +266,15 @@ impl SystemRef {
         H: Any + Send + Sync + Clone + 'static,
     {
         let helpers = self.helpers.read().await;
-        match helpers
-            .get(name)
-            .and_then(|any| any.downcast_ref::<H>()) {
+        match helpers.get(name).and_then(|any| any.downcast_ref::<H>()) {
             Some(helper) => Some(helper.clone()),
             None => None,
         }
-    }   
-    
+    }
 }
 
 /// System runner.
 pub struct SystemRunner {
-
     /// The cancellation token for the actor system.
     token: CancellationToken,
 

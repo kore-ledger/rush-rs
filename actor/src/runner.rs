@@ -124,7 +124,9 @@ where
                 ActorLifecycle::Started => {
                     debug!("Actor {} is started.", &self.path);
                     self.run(&mut ctx).await;
-                    if ctx.error().is_none() || ctx.state() == &ActorLifecycle::Stopped {
+                    if ctx.error().is_none()
+                        || ctx.state() == &ActorLifecycle::Stopped
+                    {
                         ctx.set_state(ActorLifecycle::Stopped);
                     } else {
                         ctx.set_state(ActorLifecycle::Failed);
@@ -159,6 +161,7 @@ where
                 // State: TERMINATED
                 ActorLifecycle::Terminated => {
                     debug!("Actor {} is terminated.", &self.path);
+                    ctx.system().remove_actor(&self.path.clone()).await;
                     break;
                 }
             }
@@ -230,12 +233,15 @@ where
         ctx: &mut ActorContext<A>,
     ) {
         match event {
-            InnerMessage::Event{ event, publish}=> {
+            InnerMessage::Event { event, publish } => {
                 if publish {
                     // Publish event to subscribers.
                     match self.event_sender.send(event.clone()) {
                         Ok(size) => {
-                            debug!("Event sent successfully to {} subscribers.", size);
+                            debug!(
+                                "Event sent successfully to {} subscribers.",
+                                size
+                            );
                         }
                         Err(err) => {
                             error!("Failed to send event: {:?}", err);
@@ -244,7 +250,7 @@ where
                 }
                 // Handle event.
                 self.actor.handle_event(event, ctx).await;
-            },
+            }
             InnerMessage::Error(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     // Send error to parent.
@@ -279,7 +285,6 @@ where
                             ChildAction::Stop => {
                                 ctx.set_state(ActorLifecycle::Stopped);
                                 ctx.stop().await;
-
                             }
                             ChildAction::Start => {
                                 ctx.set_state(ActorLifecycle::Started);
@@ -351,7 +356,7 @@ where
 #[derive(Debug, Clone)]
 pub enum InnerMessage<A: Actor> {
     /// Event
-    Event {event: A::Event, publish: bool},
+    Event { event: A::Event, publish: bool },
     /// Error
     Error(Error),
     /// Fail

@@ -121,7 +121,10 @@ where
     }
 
     /// Ask message to the actor.
-    pub(crate) async fn ask(&self, message: A::Message) -> Result<A::Response, Error> {
+    pub(crate) async fn ask(
+        &self,
+        message: A::Message,
+    ) -> Result<A::Response, Error> {
         debug!("Asking message to actor from handle reference.");
         let (response_sender, response_receiver) = oneshot::channel();
         let msg = ActorMessage::new(Some(message), Some(response_sender));

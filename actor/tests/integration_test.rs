@@ -1,8 +1,8 @@
 // Integrations tests for the actor module
 
 use actor::{
-    ActorSystem, Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error, Event, 
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, ActorSystem, ChildAction, Error,
+    Event, Handler, Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -200,7 +200,6 @@ impl Handler<ChildActor> for ChildActor {
     }
 }
 
-
 #[tokio::test]
 async fn test_actor() {
     let (system, mut runner) = ActorSystem::create();
@@ -226,8 +225,6 @@ async fn test_actor() {
 
     let event = recv.recv().await.unwrap();
     assert_eq!(event.0, 10);
-
-    
 }
 
 #[tokio::test]
@@ -287,6 +284,4 @@ async fn test_actor_fault() {
         .get_actor::<ChildActor>(&ActorPath::from("/user/parent/child"))
         .await;
     assert!(child_ref.is_none());
-
 }
-

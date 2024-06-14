@@ -8,7 +8,10 @@
 
 //use crate::error::NodeError;
 
-use store::{Error, database::{DbManager, Collection}};
+use store::{
+    database::{Collection, DbManager},
+    Error,
+};
 
 use rusqlite::{params, Connection, OpenFlags, Result as SQLiteResult};
 
@@ -36,22 +39,25 @@ impl Default for SqliteManager {
     }
 }
 
-
 impl DbManager<SqliteCollection> for SqliteManager {
-
-    fn create_collection(&self, identifier: &str) -> Result<SqliteCollection, Error> {
+    fn create_collection(
+        &self,
+        identifier: &str,
+    ) -> Result<SqliteCollection, Error> {
         // Open a connection to the database.
-        let conn = open(&self.path)
-            .map_err(|_| Error::CreateStore("fail SQLite open connection".to_owned()))?;
-        
+        let conn = open(&self.path).map_err(|_| {
+            Error::CreateStore("fail SQLite open connection".to_owned())
+        })?;
+
         // Create statement to create a table.
         let stmt = format!(
             "CREATE TABLE IF NOT EXISTS {} (id TEXT PRIMARY KEY, value BLOB NOT NULL)",
             identifier
         );
-        conn.execute(stmt.as_str(), ())
-            .map_err(|_| Error::CreateStore("fail SQLite create table".to_owned()))?;
-            
+        conn.execute(stmt.as_str(), ()).map_err(|_| {
+            Error::CreateStore("fail SQLite create table".to_owned())
+        })?;
+
         Ok(SqliteCollection::new(conn, identifier))
     }
 }
@@ -78,7 +84,10 @@ impl SqliteCollection {
     ) -> SQLiteResult<Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a>> {
         let order = if reverse { "DESC" } else { "ASC" };
         let conn = self.conn.lock().expect("open connection");
-        let query = format!("SELECT id, value FROM {} ORDER BY id {}", self.table, order);
+        let query = format!(
+            "SELECT id, value FROM {} ORDER BY id {}",
+            self.table, order
+        );
         let mut stmt = conn.prepare(&query)?;
         let mut rows = stmt.query([])?;
         let mut values = Vec::new();
@@ -91,7 +100,6 @@ impl SqliteCollection {
 }
 
 impl Collection for SqliteCollection {
-
     fn get(&self, key: &str) -> Result<Vec<u8>, Error> {
         let conn = self
             .conn
@@ -110,7 +118,10 @@ impl Collection for SqliteCollection {
             .conn
             .lock()
             .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
-        let stmt = format!("INSERT OR REPLACE INTO {} (id, value) VALUES (?1, ?2)", &self.table);
+        let stmt = format!(
+            "INSERT OR REPLACE INTO {} (id, value) VALUES (?1, ?2)",
+            &self.table
+        );
         conn.execute(&stmt, params![key, data])
             .map_err(|_| Error::Store("sqlite insert error".to_owned()))?;
         Ok(())
@@ -139,7 +150,7 @@ impl Collection for SqliteCollection {
             Err(_) => Box::new(std::iter::empty()),
         }
     }
-    
+
     fn name(&self) -> &str {
         self.table.as_str()
     }
@@ -179,10 +190,12 @@ pub fn open<P: AsRef<Path>>(path: P) -> Result<Connection, Error> {
 mod tests {
 
     use super::*;
-    use store::{test_store_trait, database::{Collection, DbManager  }};
+    use store::{
+        database::{Collection, DbManager},
+        test_store_trait,
+    };
 
     test_store_trait! {
         unit_test_sqlite_manager:SqliteManager:SqliteCollection
     }
-
 }
