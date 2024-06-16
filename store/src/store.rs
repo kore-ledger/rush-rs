@@ -19,13 +19,20 @@ use crate::{
 use actor::{
     Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
 };
+
 use async_trait::async_trait;
+
+use memsecurity::EncryptedMem;
+use chacha20poly1305::{
+    aead::{Aead, AeadCore, KeyInit, OsRng},
+    ChaCha20Poly1305, Nonce
+};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use tracing::{debug, error};
 
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 /// A trait representing a persistent actor.
 #[async_trait]
@@ -142,8 +149,9 @@ pub trait PersistentActor:
         &mut self,
         ctx: &mut ActorContext<Self>,
         manager: impl DbManager<C>,
+        password: Option<[u8; 32]>,
     ) -> Result<(), ActorError> {
-        let store = Store::<Self>::new("store", manager)
+        let store = Store::<Self>::new("store", manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
         let response = store.ask(StoreCommand::Recover).await?;
@@ -192,6 +200,8 @@ where
     events: Box<dyn Collection>,
     /// The states collection.
     states: Box<dyn Collection>,
+    /// Key box that encrypts contents.
+    key_box: EncryptedMem,
     /// The phantom actor.
     _phantom_actor: PhantomData<P>,
 }
@@ -212,16 +222,22 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// An error if it fails to create the collections.
     ///
-    pub fn new<C>(name: &str, manager: impl DbManager<C>) -> Result<Self, Error>
+    pub fn new<C>(name: &str, manager: impl DbManager<C>, password: Option<[u8; 32]>) -> Result<Self, Error>
     where
         C: Collection + 'static,
     {
+        let mut key_box = EncryptedMem::new();
+        if let Some(password) = password {
+            key_box.encrypt(&password).
+                map_err(|_| Error::Store("".to_owned()))?;
+        }
         let events = manager.create_collection(&format!("{}_events", name))?;
         let states = manager.create_collection(&format!("{}_states", name))?;
         Ok(Self {
             event_counter: 0,
             events: Box::new(events),
             states: Box::new(states),
+            key_box,
             _phantom_actor: PhantomData,
         })
     }
@@ -259,6 +275,11 @@ impl<P: PersistentActor> Store<P> {
         let bytes = bincode::serialize(actor).map_err(|e| {
             Error::Store(format!("Can't serialize state: {}", e))
         })?;
+        let bytes = if let Ok(key) = self.key_box.decrypt() {
+            self.encrypt(key.as_ref(), bytes.as_slice())?
+        } else {
+            bytes
+        };
         self.states.put(&self.event_counter.to_string(), &bytes)
     }
 
@@ -284,6 +305,23 @@ impl<P: PersistentActor> Store<P> {
         } else {
             Ok(None)
         }
+    }
+
+    /// Encrypt bytes.
+    /// 
+    fn encrypt(&self, key: &[u8], bytes: &[u8]) -> Result<Vec<u8>, Error> {
+        let cipher = ChaCha20Poly1305::new(key.into());
+        let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
+        let ciphertext: Vec<u8> = cipher.encrypt(&nonce, bytes.as_ref())
+            .map_err(|e| Error::Store(format!("Encrypt error: {}", e)))?;
+
+        Ok([nonce.to_vec(), ciphertext].concat())
+    }
+
+    /// Decrypt byes 
+    /// 
+    fn decrypt(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
+        todo!()
     }
 }
 
@@ -426,7 +464,7 @@ mod tests {
             ctx: &mut ActorContext<Self>,
         ) -> Result<(), ActorError> {
             let db =
-                Store::<Self>::new("store", MemoryManager::default()).unwrap();
+                Store::<Self>::new("store", MemoryManager::default(), None).unwrap();
             let store = ctx.create_child("store", db).await.unwrap();
             let response = store.ask(StoreCommand::Recover).await.unwrap();
             debug!("Recover response: {:?}", response);
@@ -525,7 +563,7 @@ mod tests {
         });
 
         let db =
-            Store::<TestActor>::new("store", MemoryManager::default()).unwrap();
+            Store::<TestActor>::new("store", MemoryManager::default(), None).unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
         let actor = TestActor { value: 0 };
