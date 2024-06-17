@@ -32,7 +32,11 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use tracing::{debug, error};
 
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, marker::PhantomData};
+
+
+/// Nonce size.
+const NONCE_SIZE: usize = 12;
 
 /// A trait representing a persistent actor.
 #[async_trait]
@@ -294,10 +298,15 @@ impl<P: PersistentActor> Store<P> {
     fn recover(&mut self) -> Result<Option<P>, Error> {
         debug!("Recovering state");
         if let Some((key, data)) = self.states.last() {
+            let bytes = if let Ok(key) = self.key_box.decrypt() {
+                self.decrypt(key.as_ref(), data.as_slice())?
+            } else {
+                data
+            };    
             self.event_counter = key.parse().map_err(|e| {
                 Error::Store(format!("Can't parse event key: {}", e))
             })?;
-            let state: P = bincode::deserialize(&data).map_err(|e| {
+            let state: P = bincode::deserialize(&bytes).map_err(|e| {
                 Error::Store(format!("Can't deserialize state: {}", e))
             })?;
             debug!("Recovered state: {:?}", state);
@@ -318,10 +327,18 @@ impl<P: PersistentActor> Store<P> {
         Ok([nonce.to_vec(), ciphertext].concat())
     }
 
-    /// Decrypt byes 
+    /// Decrypt bytes 
     /// 
     fn decrypt(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
-        todo!()
+        let cipher = ChaCha20Poly1305::new(key.into());
+        let nonce: [u8; 12] = ciphertext[..NONCE_SIZE].try_into().map_err(|e| {
+            Error::Store(format!("Nonce error: {}", e))
+        })?;
+        let nonce = Nonce::from_slice(&nonce);
+        let ciphertext = &ciphertext[NONCE_SIZE..];
+        let plaintext = cipher.decrypt(nonce, ciphertext)
+            .map_err(|e| Error::Store(format!("Decrypt error: {}", e)))?;
+        Ok(plaintext)
     }
 }
 
@@ -620,5 +637,15 @@ mod tests {
 
         actor_ref.stop().await;
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test]
+    async fn test_encrypt_decrypt() {
+        let key = [0u8; 32];
+        let store = Store::<TestActor>::new("store", MemoryManager::default(), Some(key)).unwrap();
+        let data = b"Hello, world!";
+        let encrypted = store.encrypt(&key, data).unwrap();
+        let decrypted = store.decrypt(&key, &encrypted).unwrap();
+        assert_eq!(data, decrypted.as_slice());
     }
 }
