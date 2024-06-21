@@ -22,6 +22,7 @@
 mod actor;
 mod error;
 mod handler;
+mod job;
 mod path;
 mod runner;
 mod supervision;
