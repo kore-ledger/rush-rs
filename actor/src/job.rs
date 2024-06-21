@@ -41,14 +41,6 @@ pub trait Job {
     /// 
     fn run(&self) -> JobResult;
     
-    /// Retry strategy for the job.
-    /// 
-    /// # Returns
-    /// 
-    /// The optional retry strategy for the job. 
-    /// 
-    fn retry_strategy(&self) -> Option<Box<dyn RetryStrategy>>;
-
 }
 
 pub struct JobContainer {
