@@ -49,7 +49,7 @@ pub trait PersistentActor:
     ///
     /// - event: The event to apply.
     ///
-    fn apply(&mut self, event: Self::Event);
+    fn apply(&mut self, event: &Self::Event);
 
     /// Recover the state.
     ///
@@ -78,7 +78,7 @@ pub trait PersistentActor:
     ///
     async fn persist(
         &mut self,
-        event: Self::Event,
+        event: &Self::Event,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         let store = match ctx.get_child::<Store<Self>>("store").await {
@@ -256,7 +256,7 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// An error if the operation failed.
     ///
-    fn persist(&mut self, event: P::Event) -> Result<(), Error> {
+    fn persist(&mut self, event: &P::Event) -> Result<(), Error> {
         debug!("Persisting event: {:?}", event);
         let bytes = bincode::serialize(&event).map_err(|e| {
             error!("Can't serialize event: {}", e);
@@ -405,7 +405,7 @@ where
         // Match the command.
         match msg {
             // Persist an event.
-            StoreCommand::Persist(event) => match self.persist(event.clone()) {
+            StoreCommand::Persist(event) => match self.persist(&event) {
                 Ok(_) => {
                     debug!("Persisted event: {:?}", event);
                     self.event_counter += 1;
@@ -513,7 +513,7 @@ mod tests {
 
     #[async_trait]
     impl PersistentActor for TestActor {
-        fn apply(&mut self, event: Self::Event) {
+        fn apply(&mut self, event: &Self::Event) {
             println!("Applying event: {:?}, value {}", event, self.value);
             self.value += event.0;
             println!("Applied event: {:?}, value {}", event, self.value);
@@ -566,7 +566,7 @@ mod tests {
             event: TestEvent,
             ctx: &mut ActorContext<TestActor>,
         ) -> () {
-            self.persist(event, ctx).await.unwrap();
+            self.persist(&event, ctx).await.unwrap();
         }
     }
 
