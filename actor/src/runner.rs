@@ -11,7 +11,7 @@ use crate::{
     },
     //error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
     handler::{mailbox, HandleHelper, MailboxReceiver},
-    supervision::SupervisionStrategy,
+    supervision::{RetryStrategy, SupervisionStrategy},
     system::SystemRef,
     ActorPath,
     Error,
@@ -243,13 +243,17 @@ where
                                 size
                             );
                         }
-                        Err(err) => {
-                            error!("Failed to send event: {:?}", err);
+                        Err(_err) => {
+                            error!("Failed to send event");
                         }
                     }
                 }
-                // Handle event.
-                self.actor.handle_event(event, ctx).await;
+                // Handle inner event.
+                self.actor.on_event(event, ctx).await;
+            }
+            InnerMessage::Message(msg) => {
+                // Handle inner message.
+                self.actor.on_message(msg, ctx).await;
             }
             InnerMessage::Error(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
@@ -357,6 +361,8 @@ where
 pub enum InnerMessage<A: Actor> {
     /// Event
     Event { event: A::Event, publish: bool },
+    /// Message
+    Message(A::Message),
     /// Error
     Error(Error),
     /// Fail
@@ -369,8 +375,8 @@ mod tests {
     use super::*;
 
     use crate::{
-        actor::{Actor, ActorContext, Event, Handler, Message},
-        supervision::{FixedIntervalStrategy, SupervisionStrategy},
+        actor::{Actor, ActorContext, Event, Handler, Message, Response},
+        supervision::{FixedIntervalStrategy, Strategy, SupervisionStrategy},
         system::SystemRef,
         Error,
     };
@@ -382,7 +388,7 @@ mod tests {
 
     use std::{collections::HashMap, sync::Arc, time::Duration};
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct TestMessage(ErrorMessage);
 
     impl Message for TestMessage {}
@@ -391,6 +397,11 @@ mod tests {
     pub enum ErrorMessage {
         Stop,
     }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct TestResponse;
+
+    impl Response for TestResponse {}
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct TestEvent;
@@ -405,14 +416,13 @@ mod tests {
     #[async_trait]
     impl Actor for TestActor {
         type Message = TestMessage;
-        type Response = ();
+        type Response = TestResponse;
         type Event = TestEvent;
 
         fn supervision_strategy() -> SupervisionStrategy {
-            SupervisionStrategy::Retry(Box::new(FixedIntervalStrategy::new(
-                3,
-                Duration::from_secs(1),
-            )))
+            SupervisionStrategy::Retry(Strategy::FixedInterval(
+                FixedIntervalStrategy::new(3, Duration::from_secs(1)),
+            ))
         }
 
         async fn pre_start(
@@ -452,7 +462,7 @@ mod tests {
             &mut self,
             msg: TestMessage,
             ctx: &mut ActorContext<Self>,
-        ) {
+        ) -> Result<TestResponse, Error> {
             debug!("Handling empty message");
             match msg {
                 TestMessage(ErrorMessage::Stop) => {
@@ -460,6 +470,7 @@ mod tests {
                     debug!("Actor stopped");
                 }
             }
+            Ok(TestResponse)
         }
     }
 

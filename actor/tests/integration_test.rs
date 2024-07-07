@@ -18,7 +18,7 @@ pub struct TestActor {
 }
 
 // Defines parent command
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TestCommand {
     Increment(usize),
     Decrement(usize),
@@ -29,7 +29,7 @@ pub enum TestCommand {
 impl Message for TestCommand {}
 
 // Defines parent response.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TestResponse {
     State(usize),
     None,
@@ -69,7 +69,7 @@ impl Handler<TestActor> for TestActor {
         &mut self,
         message: TestCommand,
         ctx: &mut ActorContext<TestActor>,
-    ) -> TestResponse {
+    ) -> Result<TestResponse, Error> {
         match message {
             TestCommand::Increment(value) => {
                 self.state += value;
@@ -80,14 +80,14 @@ impl Handler<TestActor> for TestActor {
                     .tell(ChildCommand::SetState(self.state))
                     .await
                     .unwrap();
-                TestResponse::None
+                Ok(TestResponse::None)
             }
             TestCommand::Decrement(value) => {
                 self.state -= value;
                 ctx.publish_event(TestEvent(self.state)).await.unwrap();
-                TestResponse::None
+                Ok(TestResponse::None)
             }
-            TestCommand::GetState => TestResponse::State(self.state),
+            TestCommand::GetState => Ok(TestResponse::State(self.state)),
         }
     }
 
@@ -123,7 +123,7 @@ pub struct ChildActor {
 }
 
 // Defines child command.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChildCommand {
     SetState(usize),
     GetState,
@@ -133,7 +133,7 @@ pub enum ChildCommand {
 impl Message for ChildCommand {}
 
 // Defines child response.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChildResponse {
     State(usize),
     None,
@@ -164,13 +164,13 @@ impl Handler<ChildActor> for ChildActor {
         &mut self,
         message: ChildCommand,
         ctx: &mut ActorContext<ChildActor>,
-    ) -> ChildResponse {
+    ) -> Result<ChildResponse, Error> {
         match message {
             ChildCommand::SetState(value) => {
                 if value <= 10 {
                     self.state = value;
                     ctx.publish_event(ChildEvent(self.state)).await.unwrap();
-                    ChildResponse::None
+                    Ok(ChildResponse::None)
                 } else if value > 10 && value < 100 {
                     if ctx
                         .emit_error(Error::Functional(
@@ -181,7 +181,7 @@ impl Handler<ChildActor> for ChildActor {
                     {
                         error!("Error emitting error");
                     }
-                    ChildResponse::State(100)
+                    Ok(ChildResponse::State(100))
                 } else {
                     if ctx
                         .emit_fail(Error::Functional(
@@ -192,10 +192,10 @@ impl Handler<ChildActor> for ChildActor {
                     {
                         error!("Error emitting fault");
                     }
-                    ChildResponse::None
+                    Ok(ChildResponse::None)
                 }
             }
-            ChildCommand::GetState => ChildResponse::State(self.state),
+            ChildCommand::GetState => Ok(ChildResponse::State(self.state)),
         }
     }
 }

@@ -22,18 +22,17 @@ use actor::{
 
 use async_trait::async_trait;
 
-use memsecurity::EncryptedMem;
 use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
-    ChaCha20Poly1305, Nonce
+    ChaCha20Poly1305, Nonce,
 };
+use memsecurity::EncryptedMem;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use tracing::{debug, error};
 
 use std::{fmt::Debug, marker::PhantomData};
-
 
 /// Nonce size.
 const NONCE_SIZE: usize = 12;
@@ -226,14 +225,19 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// An error if it fails to create the collections.
     ///
-    pub fn new<C>(name: &str, manager: impl DbManager<C>, password: Option<[u8; 32]>) -> Result<Self, Error>
+    pub fn new<C>(
+        name: &str,
+        manager: impl DbManager<C>,
+        password: Option<[u8; 32]>,
+    ) -> Result<Self, Error>
     where
         C: Collection + 'static,
     {
         let mut key_box = EncryptedMem::new();
         if let Some(password) = password {
-            key_box.encrypt(&password).
-                map_err(|_| Error::Store("".to_owned()))?;
+            key_box
+                .encrypt(&password)
+                .map_err(|_| Error::Store("".to_owned()))?;
         }
         let events = manager.create_collection(&format!("{}_events", name))?;
         let states = manager.create_collection(&format!("{}_states", name))?;
@@ -256,7 +260,10 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// An error if the operation failed.
     ///
-    fn persist(&mut self, event: &P::Event) -> Result<(), Error> {
+    fn persist<E>(&mut self, event: &E) -> Result<(), Error>
+    where
+        E: Event + Serialize + DeserializeOwned,
+    {
         debug!("Persisting event: {:?}", event);
         let bytes = bincode::serialize(&event).map_err(|e| {
             error!("Can't serialize event: {}", e);
@@ -302,7 +309,7 @@ impl<P: PersistentActor> Store<P> {
                 self.decrypt(key.as_ref(), data.as_slice())?
             } else {
                 data
-            };    
+            };
             self.event_counter = key.parse().map_err(|e| {
                 Error::Store(format!("Can't parse event key: {}", e))
             })?;
@@ -317,44 +324,48 @@ impl<P: PersistentActor> Store<P> {
     }
 
     /// Encrypt bytes.
-    /// 
+    ///
     fn encrypt(&self, key: &[u8], bytes: &[u8]) -> Result<Vec<u8>, Error> {
         let cipher = ChaCha20Poly1305::new(key.into());
         let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng); // 96-bits; unique per message
-        let ciphertext: Vec<u8> = cipher.encrypt(&nonce, bytes.as_ref())
+        let ciphertext: Vec<u8> = cipher
+            .encrypt(&nonce, bytes.as_ref())
             .map_err(|e| Error::Store(format!("Encrypt error: {}", e)))?;
 
         Ok([nonce.to_vec(), ciphertext].concat())
     }
 
-    /// Decrypt bytes 
-    /// 
+    /// Decrypt bytes
+    ///
     fn decrypt(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         let cipher = ChaCha20Poly1305::new(key.into());
-        let nonce: [u8; 12] = ciphertext[..NONCE_SIZE].try_into().map_err(|e| {
-            Error::Store(format!("Nonce error: {}", e))
-        })?;
+        let nonce: [u8; 12] = ciphertext[..NONCE_SIZE]
+            .try_into()
+            .map_err(|e| Error::Store(format!("Nonce error: {}", e)))?;
         let nonce = Nonce::from_slice(&nonce);
         let ciphertext = &ciphertext[NONCE_SIZE..];
-        let plaintext = cipher.decrypt(nonce, ciphertext)
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
             .map_err(|e| Error::Store(format!("Decrypt error: {}", e)))?;
         Ok(plaintext)
     }
 }
 
 /// Store command.
-#[derive(Debug, Clone)]
-pub enum StoreCommand<P>
-where
-    P: PersistentActor,
-{
-    Persist(P::Event),
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StoreCommand<P, E> {
+    Persist(E),
     Snapshot(P),
     Recover,
 }
 
 /// Implements `Message` for store command.
-impl<P: PersistentActor> Message for StoreCommand<P> {}
+impl<P, E> Message for StoreCommand<P, E>
+where
+    P: PersistentActor,
+    E: Event + Serialize + DeserializeOwned,
+{
+}
 
 /// Store response.
 #[derive(Debug, Clone)]
@@ -387,7 +398,7 @@ impl<P> Actor for Store<P>
 where
     P: PersistentActor,
 {
-    type Message = StoreCommand<P>;
+    type Message = StoreCommand<P, P::Event>;
     type Response = StoreResponse<P>;
     type Event = StoreEvent;
 }
@@ -399,9 +410,9 @@ where
 {
     async fn handle_message(
         &mut self,
-        msg: StoreCommand<P>,
+        msg: StoreCommand<P, P::Event>,
         _ctx: &mut ActorContext<Store<P>>,
-    ) -> StoreResponse<P> {
+    ) -> Result<StoreResponse<P>, ActorError> {
         // Match the command.
         match msg {
             // Persist an event.
@@ -409,25 +420,25 @@ where
                 Ok(_) => {
                     debug!("Persisted event: {:?}", event);
                     self.event_counter += 1;
-                    StoreResponse::Persisted
+                    Ok(StoreResponse::Persisted)
                 }
-                Err(e) => StoreResponse::Error(e),
+                Err(e) => Ok(StoreResponse::Error(e)),
             },
             // Snapshot the state.
             StoreCommand::Snapshot(actor) => match self.snapshot(&actor) {
                 Ok(_) => {
                     debug!("Snapshotted state: {:?}", actor);
-                    StoreResponse::Snapshotted
+                    Ok(StoreResponse::Snapshotted)
                 }
-                Err(e) => StoreResponse::Error(e),
+                Err(e) => Ok(StoreResponse::Error(e)),
             },
             // Recover the state.
             StoreCommand::Recover => match self.recover() {
                 Ok(state) => {
                     debug!("Recovered state: {:?}", state);
-                    StoreResponse::State(state)
+                    Ok(StoreResponse::State(state))
                 }
-                Err(e) => StoreResponse::Error(e),
+                Err(e) => Ok(StoreResponse::Error(e)),
             },
         }
     }
@@ -438,7 +449,7 @@ mod tests {
 
     use super::*;
     use crate::memory::MemoryManager;
-    use actor::{ActorRef, ActorSystem};
+    use actor::{ActorRef, ActorSystem, Error as ActorError};
 
     use async_trait::async_trait;
 
@@ -449,7 +460,7 @@ mod tests {
         pub value: i32,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     enum TestMessage {
         Increment(i32),
         Recover,
@@ -470,6 +481,8 @@ mod tests {
         None,
     }
 
+    impl Response for TestResponse {}
+
     #[async_trait]
     impl Actor for TestActor {
         type Message = TestMessage;
@@ -481,7 +494,8 @@ mod tests {
             ctx: &mut ActorContext<Self>,
         ) -> Result<(), ActorError> {
             let db =
-                Store::<Self>::new("store", MemoryManager::default(), None).unwrap();
+                Store::<Self>::new("store", MemoryManager::default(), None)
+                    .unwrap();
             let store = ctx.create_child("store", db).await.unwrap();
             let response = store.ask(StoreCommand::Recover).await.unwrap();
             debug!("Recover response: {:?}", response);
@@ -526,12 +540,12 @@ mod tests {
             &mut self,
             msg: TestMessage,
             ctx: &mut ActorContext<TestActor>,
-        ) -> TestResponse {
+        ) -> Result<TestResponse, ActorError> {
             match msg {
                 TestMessage::Increment(value) => {
                     let event = TestEvent(value);
                     ctx.event(event).await.unwrap();
-                    TestResponse::None
+                    Ok(TestResponse::None)
                 }
                 TestMessage::Recover => {
                     let store: ActorRef<Store<Self>> =
@@ -540,9 +554,9 @@ mod tests {
                         store.ask(StoreCommand::Recover).await.unwrap();
                     if let StoreResponse::State(Some(state)) = response {
                         self.update(state.clone());
-                        TestResponse::Value(state.value)
+                        Ok(TestResponse::Value(state.value))
                     } else {
-                        TestResponse::None
+                        Ok(TestResponse::None)
                     }
                 }
                 TestMessage::Snapshot => {
@@ -552,16 +566,16 @@ mod tests {
                         .ask(StoreCommand::Snapshot(self.clone()))
                         .await
                         .unwrap();
-                    TestResponse::None
+                    Ok(TestResponse::None)
                 }
                 TestMessage::GetValue => {
                     println!("Getting value: {}", self.value);
-                    TestResponse::Value(self.value)
+                    Ok(TestResponse::Value(self.value))
                 }
             }
         }
 
-        async fn handle_event(
+        async fn on_event(
             &mut self,
             event: TestEvent,
             ctx: &mut ActorContext<TestActor>,
@@ -580,7 +594,8 @@ mod tests {
         });
 
         let db =
-            Store::<TestActor>::new("store", MemoryManager::default(), None).unwrap();
+            Store::<TestActor>::new("store", MemoryManager::default(), None)
+                .unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
         let actor = TestActor { value: 0 };
@@ -642,7 +657,12 @@ mod tests {
     #[tokio::test]
     async fn test_encrypt_decrypt() {
         let key = [0u8; 32];
-        let store = Store::<TestActor>::new("store", MemoryManager::default(), Some(key)).unwrap();
+        let store = Store::<TestActor>::new(
+            "store",
+            MemoryManager::default(),
+            Some(key),
+        )
+        .unwrap();
         let data = b"Hello, world!";
         let encrypted = store.encrypt(&key, data).unwrap();
         let decrypted = store.decrypt(&key, &encrypted).unwrap();

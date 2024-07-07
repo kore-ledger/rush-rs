@@ -1,3 +1,6 @@
+// Copyright 2024 Antonio Estévez
+// SPDX-License-Identifier: Apache-2.0
+
 //! Supervision strategies
 //!
 
@@ -21,16 +24,48 @@ pub trait RetryStrategy: Debug + Send + Sync {
 /// A SupervisionStrategy defined what to do when an actor fails at startup.
 /// Currently there are two choices: Stop the actor and do nothing, or Retry
 /// the startup. For Retry you can set a RetryStrategy.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SupervisionStrategy {
     /// Stop the actor if an error occurs at startup
     Stop,
     /// Retry start the actor if an error occurs at startup
-    Retry(Box<dyn RetryStrategy>),
+    Retry(Strategy),
 }
 
 /// A Retry strategy that immediately retries an actor that failed to start
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
+pub enum Strategy {
+    NoInterval(NoIntervalStrategy),
+    FixedInterval(FixedIntervalStrategy),
+    ExponentialBackoff(ExponentialBackoffStrategy),
+}
+
+impl RetryStrategy for Strategy {
+    fn max_retries(&self) -> usize {
+        match self {
+            Strategy::NoInterval(strategy) => strategy.max_retries(),
+            Strategy::FixedInterval(strategy) => strategy.max_retries(),
+            Strategy::ExponentialBackoff(strategy) => strategy.max_retries(),
+        }
+    }
+
+    fn next_backoff(&mut self) -> Option<Duration> {
+        match self {
+            Strategy::NoInterval(strategy) => strategy.next_backoff(),
+            Strategy::FixedInterval(strategy) => strategy.next_backoff(),
+            Strategy::ExponentialBackoff(strategy) => strategy.next_backoff(),
+        }
+    }
+}
+
+impl Default for Strategy {
+    fn default() -> Self {
+        Strategy::NoInterval(NoIntervalStrategy::default())
+    }
+}
+
+/// A Retry strategy that immediately retries an actor that failed to start
+#[derive(Debug, Default, Clone)]
 pub struct NoIntervalStrategy {
     max_retries: usize,
 }
@@ -53,7 +88,7 @@ impl RetryStrategy for NoIntervalStrategy {
 
 /// A retry strategy that retries an actor with a fixed wait period before
 /// retrying.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct FixedIntervalStrategy {
     /// Maximum number of retries before permanently failing an actor.
     max_retries: usize,
@@ -84,7 +119,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 
 /// A retry strategy that retries an actor with an exponential backoff wait
 /// period before retrying.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ExponentialBackoffStrategy {
     /// Maximum number of retries before permanently failing an actor.
     max_retries: usize,

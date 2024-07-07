@@ -27,7 +27,7 @@ where
     A: Actor + Handler<A>,
 {
     message: Option<A::Message>,
-    rsvp: Option<oneshot::Sender<A::Response>>,
+    rsvp: Option<oneshot::Sender<Result<A::Response, Error>>>,
     _phantom_actor: PhantomData<A>,
 }
 
@@ -39,7 +39,7 @@ where
     /// Creates internal actor message from message and optional reponse sender.
     pub fn new(
         message: Option<A::Message>,
-        rsvp: Option<oneshot::Sender<A::Response>>,
+        rsvp: Option<oneshot::Sender<Result<A::Response, Error>>>,
     ) -> Self {
         debug!("Creating new internal actor message.");
         Self {
@@ -134,14 +134,14 @@ where
         } else {
             response_receiver
                 .await
-                .map_err(|error| Error::Send(error.to_string()))
+                .map_err(|error| Error::Send(error.to_string()))?
         }
     }
 
     /// Stop the actor.
     pub(crate) async fn stop(&self) {
         debug!("Stopping actor from handle reference.");
-        let msg = ActorMessage::new(None, None);
+        let msg: ActorMessage<A> = ActorMessage::new(None, None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to stop actor! {}", error.to_string());
         }

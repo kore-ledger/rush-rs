@@ -22,8 +22,8 @@
 mod actor;
 mod error;
 mod handler;
-mod job;
 mod path;
+mod retries;
 mod runner;
 mod supervision;
 mod system;
@@ -34,6 +34,7 @@ pub use actor::{
 };
 pub use error::Error;
 pub use path::ActorPath;
+//pub use retries::{Retries, Retry};
 pub use supervision::{
     ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
     RetryStrategy, SupervisionStrategy,

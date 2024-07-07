@@ -26,11 +26,12 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use tracing::debug;
 
-use std::{fmt::Debug, marker::PhantomData};
+use std::fmt::Debug;
 
 /// The `ActorContext` is the context of the actor.
 /// It is passed to the actor when it is started, and can be used to interact with the actor
 /// system.
+#[derive(Clone)]
 pub struct ActorContext<A: Actor> {
     /// The path of the actor.
     path: ActorPath,
@@ -46,8 +47,6 @@ pub struct ActorContext<A: Actor> {
     inner_sender: InnerSender<A>,
     /// Cancellation token.
     token: CancellationToken,
-    /// Phantom data for the actor type.
-    phantom_a: PhantomData<A>,
 }
 
 impl<A> ActorContext<A>
@@ -83,7 +82,6 @@ where
             error_sender,
             inner_sender,
             token,
-            phantom_a: PhantomData,
         }
     }
 
@@ -163,6 +161,26 @@ where
                 publish: false,
             })
             .map_err(|_| Error::SendEvent)
+    }
+
+    /// Emits a message to inner handler.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The message to emit.
+    ///
+    /// # Returns
+    ///
+    /// Returns a void result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the message could not be emitted.
+    ///
+    pub async fn message(&self, message: A::Message) -> Result<(), Error> {
+        self.inner_sender
+            .send(InnerMessage::Message(message))
+            .map_err(|_| Error::Send("Message".to_string()))
     }
 
     /// Emits an error.
@@ -416,7 +434,7 @@ pub trait Actor: Send + Sync + Sized + 'static {
 
     /// The `Response` type is the type of the response that the actor can give when it receives a
     /// message.
-    type Response: Debug + Send + Sync + 'static;
+    type Response: Response;
 
     /// Defines the supervision strategy to use for this actor. By default it is
     /// `Stop` which simply stops the actor if an error occurs at startup or when an
@@ -477,6 +495,11 @@ pub trait Actor: Send + Sync + Sized + 'static {
     ) -> Result<(), Error> {
         Ok(())
     }
+
+    /// Create event from response.
+    fn from_response(_response: Self::Response) -> Result<Self::Event, Error> {
+        Err(Error::Functional("Not implemented".to_string()))
+    }
 }
 
 /// Events that this actor will emit after processing a message. The events emitted by a message
@@ -490,7 +513,7 @@ pub trait Event:
 pub trait Message: Clone + Send + Sync + 'static {}
 
 /// Defines the response of a message.
-pub trait Response: Debug + Send + Sync + 'static {}
+pub trait Response: Clone + Send + Sync + 'static {}
 
 /// This is the trait that allows an actor to handle the messages that they receive and,
 /// if necessary, respond to them.
@@ -514,9 +537,9 @@ pub trait Handler<A: Actor>: Send + Sync {
         &mut self,
         msg: A::Message,
         ctx: &mut ActorContext<A>,
-    ) -> A::Response;
+    ) -> Result<A::Response, Error>;
 
-    /// Handle an event.
+    /// Internal event.
     /// Override this method to define what should happen when an internal event is emitted by the
     /// actor.
     /// By default it does nothing.
@@ -526,9 +549,23 @@ pub trait Handler<A: Actor>: Send + Sync {
     /// * `event` - The event to handle.
     /// * `ctx` - The actor context.
     ///
-    async fn handle_event(
+    async fn on_event(&mut self, _event: A::Event, _ctx: &mut ActorContext<A>) {
+        // Default implementation.
+    }
+
+    /// Internal message.
+    /// Override this method to define what should happen when an internal message is emitted by the
+    /// actor.
+    /// By default it does nothing.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The message to handle.
+    /// * `ctx` - The actor context.
+    ///
+    async fn on_message(
         &mut self,
-        _event: A::Event,
+        _msg: A::Message,
         _ctx: &mut ActorContext<A>,
     ) {
         // Default implementation.
@@ -719,13 +756,20 @@ where
 }
 
 /// Dummy actor.
+#[derive(Debug, Clone)]
 pub struct DummyActor;
 
 /// Dummy message.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DummyMessage;
 
 impl Message for DummyMessage {}
+
+/// Dummy response.
+#[derive(Debug, Clone)]
+pub struct DummyResponse;
+
+impl Response for DummyResponse {}
 
 /// Dummy event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -735,7 +779,7 @@ impl Event for DummyEvent {}
 
 impl Actor for DummyActor {
     type Message = DummyMessage;
-    type Response = ();
+    type Response = DummyResponse;
     type Event = DummyEvent;
 }
 
@@ -745,7 +789,8 @@ impl Handler<DummyActor> for DummyActor {
         &mut self,
         _message: DummyMessage,
         _ctx: &mut ActorContext<DummyActor>,
-    ) {
+    ) -> Result<DummyResponse, Error> {
+        Ok(DummyResponse)
     }
 
     async fn on_child_error(
@@ -775,13 +820,15 @@ mod test {
         counter: usize,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestMessage(usize);
 
     impl Message for TestMessage {}
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestResponse(usize);
+
+    impl Response for TestResponse {}
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestEvent(usize);
@@ -801,11 +848,11 @@ mod test {
             &mut self,
             msg: TestMessage,
             ctx: &mut ActorContext<TestActor>,
-        ) -> TestResponse {
+        ) -> Result<TestResponse, Error> {
             let value = msg.0;
             self.counter += value;
             ctx.publish_event(TestEvent(self.counter)).await.unwrap();
-            TestResponse(self.counter)
+            Ok(TestResponse(self.counter))
         }
     }
 
