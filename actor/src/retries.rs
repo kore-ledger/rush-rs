@@ -11,20 +11,14 @@ use crate::{
     Actor, ActorContext, ActorPath, Error, Event, Handler, Message, Response,
 };
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use async_trait::async_trait;
 use std::{fmt::Debug, marker::PhantomData};
 use tracing::{debug, error};
 
 /// Retry trait.
-pub trait Retry: Actor + Handler<Self> + Debug + Clone {
-    fn handle(
-        &mut self,
-        msg: Self::Message,
-        ctx: &ActorContext<Self>,
-    ) -> Result<Self::Event, Error>;
-}
+pub trait Retry: Actor + Handler<Self> + Debug + Clone {}
 
 /// Retries.
 #[derive(Debug, Clone)]
@@ -105,10 +99,10 @@ where
                 }
             }
         }
-        error!("Retries failed");
+        error!("Retries with actor {} failed. Unknown actor.", self.actor_path);
         let _ = ctx
             .emit_error(Error::Functional(format!(
-                "Retries with actor {} failed.",
+                "Retries with actor {} failed. Unknown actor.",
                 self.actor_path
             )))
             .await;
@@ -208,15 +202,7 @@ mod tests {
         type Event = TestEvent;
     }
 
-    impl Retry for TestActor {
-        fn handle(
-            &mut self,
-            _msg: Self::Message,
-            _ctx: &ActorContext<Self>,
-        ) -> Result<Self::Event, Error> {
-            Ok(TestEvent(0))
-        }
-    }
+    impl Retry for TestActor {}
 
     #[async_trait]
     impl Handler<TestActor> for TestActor {
