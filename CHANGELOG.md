@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2024-07-07
+
+### 🚀 Features
+
+- Encrypt and decrypt state
+- Encrypt and decrypt store
+- Job support
+- Job support
+- Retries actor
+
+### 🐛 Bug Fixes
+
+- Persist references
+- Retries handler
+
+### 📚 Documentation
+
+- Update CHANGELOG.md
+
 ## [0.3.1] - 2024-06-14
 
 ### 🚀 Features

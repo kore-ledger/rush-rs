@@ -8,233 +8,204 @@
 
 use crate::{
     supervision::{RetryStrategy, Strategy},
-    Actor, ActorContext, ActorPath, Error, Event, Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, Error, Handler,
 };
 
-use serde::{Deserialize, Serialize};
-
 use async_trait::async_trait;
-use std::{fmt::Debug, marker::PhantomData};
+use std::fmt::Debug;
 use tracing::{debug, error};
 
 /// Retry trait.
-pub trait Retry: Actor + Handler<Self> + Debug + Clone {}
+#[async_trait]
+pub trait Retry: Actor + Handler<Self> + Debug + Clone {
+    type Child: Actor + Handler<Self::Child> + Debug + Clone;
 
-/// Retries.
-#[derive(Debug, Clone)]
-pub struct Retries<A>
-where
-    A: Retry,
-{
-    /// Retry strategy.
-    retry_strategy: Strategy,
+    /// Returns child actor.
+    async fn child(
+        &self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<ActorRef<Self::Child>, Error>;
 
-    /// The actor path.
-    actor_path: ActorPath,
-
-    /// Phantom data.
-    _phantom: PhantomData<A>,
-}
-
-impl<A> Retries<A>
-where
-    A: Retry,
-{
-    /// Create a new retries.
-    ///
-    /// # Arguments
-    ///
-    /// * `retry_strategy` - Retry strategy.
-    ///
-    /// # Returns
-    ///
-    /// A new retries.
-    ///
-    pub fn new(retry_strategy: Strategy, actor_path: ActorPath) -> Self {
-        Retries {
-            retry_strategy,
-            actor_path,
-            _phantom: PhantomData,
-        }
-    }
-
-    /// Apply retries.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - Message to retry.
-    /// * `ctx` - Actor context.
-    ///
-    /// # Returns
-    ///
-    /// The response of the retries.
-    ///
-    /// # Errors
-    ///
-    /// An error is returned if the retries fail.
-    ///
+    /// Retry message.
     async fn apply_retries(
-        &mut self,
-        msg: A::Message,
-        ctx: &mut ActorContext<Retries<A>>,
-    ) {
-        if let Some(child) = ctx.system().get_actor::<A>(&self.actor_path).await
-        {
+        &self,
+        ctx: &mut ActorContext<Self>,
+        path: ActorPath,
+        retry_strategy: &mut Strategy,
+        message: <<Self as Retry>::Child as Actor>::Message,
+    ) -> Result<<<Self as Retry>::Child as Actor>::Response, Error> {
+        if let Ok(child) = self.child(ctx).await {
             let mut retries = 0;
-            while retries < self.retry_strategy.max_retries() {
+            while retries < retry_strategy.max_retries() {
                 debug!(
                     "Retry {}/{}.",
                     retries + 1,
-                    self.retry_strategy.max_retries()
+                    retry_strategy.max_retries()
                 );
-                if let Ok(_) = child.ask(msg.clone()).await {
+                if let Ok(response) = child.ask(message.clone()).await {
                     debug!("Response from retry");
-                    return;
+                    return Ok(response);
                 } else {
-                    if let Some(duration) = self.retry_strategy.next_backoff() {
+                    if let Some(duration) = retry_strategy.next_backoff() {
                         debug!("Backoff for {:?}", &duration);
                         tokio::time::sleep(duration).await;
                     }
                     retries += 1;
                 }
             }
-        }
-        error!("Retries with actor {} failed. Unknown actor.", self.actor_path);
-        let _ = ctx
-            .emit_error(Error::Functional(format!(
-                "Retries with actor {} failed. Unknown actor.",
-                self.actor_path
+            error!("Max retries with actor {} reached.", path);
+            Err(Error::Functional(format!(
+                "Max retries with actor {} reached.",
+                path
             )))
-            .await;
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetryMessage<A: Retry>(A::Message);
-
-impl<A: Retry> Message for RetryMessage<A> {}
-
-/// Retry response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RetryResponse {
-    /// Done
-    Done,
-    /// Fail
-    Fail,
-}
-
-impl Response for RetryResponse {}
-
-/// Retry event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetryEvent<E>(E);
-
-impl<E> Event for RetryEvent<E> where E: Event {}
-
-/// 'Actor' implementation for 'Retries'.
-#[async_trait]
-impl<A> Actor for Retries<A>
-where
-    A: Retry,
-{
-    type Message = RetryMessage<A>;
-    type Response = RetryResponse;
-    type Event = RetryEvent<A::Event>;
-}
-
-#[async_trait]
-impl<A> Handler<Retries<A>> for Retries<A>
-where
-    A: Retry,
-{
-    async fn handle_message(
-        &mut self,
-        msg: RetryMessage<A>,
-        ctx: &mut ActorContext<Retries<A>>,
-    ) -> Result<RetryResponse, Error> {
-        match ctx.message(msg).await {
-            Ok(_) => Ok(RetryResponse::Done),
-            Err(_) => Ok(RetryResponse::Fail),
+        } else {
+            error!("Retries with actor {} failed. Unknown actor.", path);
+            Err(Error::Functional(format!(
+                "Retries with actor {} failed. Unknown actor.",
+                path
+            )))
         }
-    }
-
-    async fn on_message(
-        &mut self,
-        msg: RetryMessage<A>,
-        ctx: &mut ActorContext<Retries<A>>,
-    ) {
-        self.apply_retries(msg.0, ctx).await;
     }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use std::time::Duration;
+
+    use crate::{
+        Actor, ActorSystem, Event, FixedIntervalStrategy, Message, Response,
+    };
+
     use super::*;
-    use crate::{ActorSystem, NoIntervalStrategy};
+
+    use async_trait::async_trait;
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone)]
-    pub struct TestActor {
+    struct ParentActor {
+        pub child: String,
+    }
+
+    #[derive(Debug, Clone)]
+    struct ParentCommand;
+
+    impl Message for ParentCommand {}
+
+    #[derive(Debug, Clone)]
+    struct ParentResponse(usize);
+
+    impl Response for ParentResponse {}
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct ParentEvent;
+
+    impl Event for ParentEvent {}
+
+    impl Actor for ParentActor {
+        type Message = ParentCommand;
+        type Response = ParentResponse;
+        type Event = ParentEvent;
+    }
+
+    #[async_trait]
+    impl Handler<ParentActor> for ParentActor {
+        async fn handle_message(
+            &mut self,
+            _message: ParentCommand,
+            ctx: &mut ActorContext<ParentActor>,
+        ) -> Result<ParentResponse, Error> {
+            //let name = message.0;
+            let mut strategy = Strategy::FixedInterval(
+                FixedIntervalStrategy::new(3, Duration::from_secs(1)),
+            );
+            let path = ctx.path().clone() / &self.child;
+            let response = self
+                .apply_retries(
+                    ctx,
+                    path,
+                    &mut strategy,
+                    ChildCommand,
+                )
+                .await
+                .unwrap();
+            Ok(ParentResponse(response.0))
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct ChildActor {
         pub counter: usize,
     }
 
     #[derive(Debug, Clone)]
-    pub struct TestCommand(String);
+    struct ChildCommand;
 
-    impl Message for TestCommand {}
+    impl Message for ChildCommand {}
 
     #[derive(Debug, Clone)]
-    pub enum TestResponse {
-        Done(usize),
-        Fail,
-    }
+    struct ChildResponse(usize);
 
-    impl Response for TestResponse {}
+    impl Response for ChildResponse {}
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct TestEvent(usize);
+    struct ChildEvent;
 
-    impl Event for TestEvent {}
+    impl Event for ChildEvent {}
 
-    impl Actor for TestActor {
-        type Message = TestCommand;
-        type Response = TestResponse;
-        type Event = TestEvent;
+    impl Actor for ChildActor {
+        type Message = ChildCommand;
+        type Response = ChildResponse;
+        type Event = ChildEvent;
     }
 
-    impl Retry for TestActor {}
-
     #[async_trait]
-    impl Handler<TestActor> for TestActor {
+    impl Handler<ChildActor> for ChildActor {
         async fn handle_message(
             &mut self,
-            msg: TestCommand,
-            ctx: &mut ActorContext<TestActor>,
-        ) -> Result<TestResponse, Error> {
-            if self.counter < 3 {
+            _message: ChildCommand,
+            _ctx: &mut ActorContext<ChildActor>,
+        ) -> Result<ChildResponse, Error> {
+            if self.counter < 2 {
                 self.counter += 1;
-                Err(Error::Send("Fail".to_owned()))
+                Err(Error::Functional("Counter reached".to_string()))
             } else {
-                Ok(TestResponse::Done(self.counter))
+                Ok(ChildResponse(self.counter))
             }
+        }
+    }
+    #[async_trait]
+    impl Retry for ParentActor {
+        type Child = ChildActor;
+
+        async fn child(
+            &self,
+            ctx: &mut ActorContext<ParentActor>,
+        ) -> Result<ActorRef<ChildActor>, Error> {
+            ctx.create_child(&self.child, ChildActor { counter: 0 })
+                .await
         }
     }
 
     #[tokio::test]
-    async fn test_retries() {
+    async fn test_apply_retries() {
         let (system, mut runner) = ActorSystem::create();
 
         tokio::spawn(async move {
             runner.run().await;
         });
 
-        let actor = TestActor { counter: 0 };
-        let actor_ref = system
-            .create_root_actor("test", TestActor { counter: 0 })
+        let actor = system
+            .create_root_actor(
+                "parent",
+                ParentActor {
+                    child: "child".to_owned(),
+                },
+            )
             .await
             .unwrap();
-        let retry_strategy = Strategy::NoInterval(NoIntervalStrategy::new(3));
-        let mut retries: Retries<TestActor> =
-            Retries::new(retry_strategy, actor_ref.path().clone());
+
+        let response = actor.ask(ParentCommand).await.unwrap();
+        assert_eq!(response.0, 2);
     }
 }
