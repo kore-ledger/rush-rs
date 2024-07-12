@@ -461,6 +461,7 @@ where
     type Message = StoreCommand<P, P::Event>;
     type Response = StoreResponse<P>;
     type Event = StoreEvent;
+
 }
 
 #[async_trait]
