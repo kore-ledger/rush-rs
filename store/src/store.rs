@@ -509,6 +509,7 @@ mod tests {
 
     use super::*;
     use crate::memory::MemoryManager;
+
     use actor::{ActorRef, ActorSystem, Error as ActorError};
 
     use async_trait::async_trait;

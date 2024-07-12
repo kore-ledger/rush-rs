@@ -80,5 +80,7 @@ impl Collection for MemoryStore {
 mod tests {
     use super::*;
     use crate::test_store_trait;
-    test_store_trait!(unit_test_memory_manager:crate::memory::MemoryManager:MemoryStore);
+    test_store_trait! {
+        unit_test_memory_manager:crate::memory::MemoryManager:MemoryStore
+    }
 }

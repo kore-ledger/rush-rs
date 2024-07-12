@@ -55,12 +55,23 @@ impl DbManager<RocksDbStore> for RocksDbManager {
             .db
             .write()
             .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
-        db.create_cf(name, &self.opts)
-            .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
+        if db.cf_handle(name).is_none() {
+            db.create_cf(name, &self.opts)
+                .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
+        }
         Ok(RocksDbStore {
             name: name.to_owned(),
             store: self.db.clone(),
         })
+    }
+
+    fn stop(self) -> Result<(), Error> {
+        let db = self
+            .db
+            .read()
+            .map_err(|e| Error::Store(format!("{:?}", e)))?;
+        Ok(db.flush()
+            .map_err(|e| Error::Store(format!("{:?}", e)))?)
     }
 }
 
@@ -134,6 +145,22 @@ impl Collection for RocksDbStore {
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a> {
         Box::new(RocksDbIterator::new(&self.store, &self.name, reverse))
     }
+
+    fn flush(&self) -> Result<(), Error> {
+        let db = self
+            .store
+            .read()
+            .map_err(|e| Error::Get(format!("{:?}", e)))?;
+        if let Some(handle) = db.cf_handle(&self.name) {
+            Ok(db
+                .flush_cf(handle)
+                .map_err(|e| Error::Get(format!("{:?}", e)))?)
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
 }
 
 type GuardIter<'a> = (
@@ -205,4 +232,7 @@ mod tests {
     test_store_trait! {
         unit_test_rocksdb_manager:crate::rocksdb::RocksDbManager:RocksDbStore
     }
+
+
+
 }

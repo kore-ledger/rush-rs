@@ -23,6 +23,13 @@ where
     /// The collection.
     ///
     fn create_collection(&self, name: &str) -> Result<C, Error>;
+
+    /// Stop manager.
+    /// 
+    
+    fn stop(self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 /// A trait representing a collection of key-value pairs in a database.
@@ -113,6 +120,12 @@ pub trait Collection: Sync + Send + 'static {
         reverse: bool,
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a>;
 
+    /// Flush collection.
+    /// 
+    fn flush(&self) -> Result<(), Error> {
+        Ok(())
+    }
+
     /// Returns a vector of values in the collection that are in the given range.
     ///
     /// # Arguments
@@ -195,6 +208,7 @@ macro_rules! test_store_trait {
                 let manager = <$type>::default();
                 let store: $type2 = manager.create_collection("test").unwrap();
                 assert_eq!(store.name(), "test");
+                assert!(manager.stop().is_ok())
             }
 
             #[test]
@@ -204,6 +218,7 @@ macro_rules! test_store_trait {
                     manager.create_collection("test").unwrap();
                 store.put("key", b"value").unwrap();
                 assert_eq!(store.get("key").unwrap(), b"value");
+                assert!(manager.stop().is_ok())
             }
 
             #[test]
@@ -214,6 +229,7 @@ macro_rules! test_store_trait {
                 store.put("key", b"value").unwrap();
                 store.del("key").unwrap();
                 assert_eq!(store.get("key"), Err(Error::EntryNotFound));
+                assert!(manager.stop().is_ok())
             }
 
             #[test]
@@ -238,6 +254,7 @@ macro_rules! test_store_trait {
                     Some(("key3".to_string(), b"value3".to_vec()))
                 );
                 assert_eq!(iter.next(), None);
+                assert!(manager.stop().is_ok())
             }
 
             #[test]
@@ -262,6 +279,7 @@ macro_rules! test_store_trait {
                     Some(("key1".to_string(), b"value1".to_vec()))
                 );
                 assert_eq!(iter.next(), None);
+                assert!(manager.stop().is_ok())
             }
 
             #[test]
@@ -277,6 +295,7 @@ macro_rules! test_store_trait {
                     last,
                     Some(("key3".to_string(), b"value3".to_vec()))
                 );
+                assert!(manager.stop().is_ok())
             }
 
             #[test]
@@ -298,6 +317,7 @@ macro_rules! test_store_trait {
                     result,
                     vec![b"value2".to_vec(), b"value1".to_vec()]
                 );
+                assert!(manager.stop().is_ok())
             }
         }
     };
