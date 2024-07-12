@@ -154,7 +154,8 @@ pub trait PersistentActor:
         manager: impl DbManager<C>,
         password: Option<[u8; 32]>,
     ) -> Result<(), ActorError> {
-        let store = Store::<Self>::new("store", manager, password)
+        let name = ctx.path().key();
+        let store = Store::<Self>::new(&name, manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
         let response = store.ask(StoreCommand::Recover).await?;
@@ -204,7 +205,7 @@ where
     /// The states collection.
     states: Box<dyn Collection>,
     /// Key box that encrypts contents.
-    key_box: EncryptedMem,
+    key_box: Option<EncryptedMem>,
     /// The phantom actor.
     _phantom_actor: PhantomData<P>,
 }
@@ -233,12 +234,16 @@ impl<P: PersistentActor> Store<P> {
     where
         C: Collection + 'static,
     {
-        let mut key_box = EncryptedMem::new();
-        if let Some(password) = password {
-            key_box
-                .encrypt(&password)
-                .map_err(|_| Error::Store("".to_owned()))?;
-        }
+        let key_box = match password {
+            Some(key) => {
+                let mut key_box = EncryptedMem::new();        
+                key_box
+                    .encrypt(&key)
+                    .map_err(|_| Error::Store("Can't encrypt password.".to_owned()))?;
+                Some(key_box)    
+            },
+            None => None,
+        };
         let events = manager.create_collection(&format!("{}_events", name))?;
         let states = manager.create_collection(&format!("{}_states", name))?;
         Ok(Self {
@@ -265,11 +270,52 @@ impl<P: PersistentActor> Store<P> {
         E: Event + Serialize + DeserializeOwned,
     {
         debug!("Persisting event: {:?}", event);
-        let bytes = bincode::serialize(&event).map_err(|e| {
-            error!("Can't serialize event: {}", e);
-            Error::Store(format!("Can't serialize event: {}", e))
-        })?;
+        let bytes = if let Some(key_box) = &self.key_box {
+            if let Ok(key) = key_box.decrypt() {
+                let bytes = bincode::serialize(&event).map_err(|e| {
+                    error!("Can't serialize event: {}", e);
+                    Error::Store(format!("Can't serialize event: {}", e))
+                })?;
+                self.encrypt(key.as_ref(), &bytes)?
+            } else {
+                return Err(Error::Store("Can't decrypt key".to_owned()));
+            }
+        } else {
+            bincode::serialize(&event).map_err(|e| {
+                error!("Can't serialize event: {}", e);
+                Error::Store(format!("Can't serialize event: {}", e))
+            })?
+        };
         self.events.put(&self.event_counter.to_string(), &bytes)
+    }
+
+    /// Retrieve events.
+    fn events(&mut self, from: usize, to: usize) -> Result<Vec<P::Event>, Error> {
+        let mut events = Vec::new();
+        for i in from..to {
+            if let Ok(data) = self.events.get(&i.to_string()) {
+                let event: P::Event = if let Some(key_box) = &self.key_box {
+                    if let Ok(key) = key_box.decrypt() {
+                        let data = self.decrypt(key.as_ref(), data.as_slice())?;
+                        bincode::deserialize(&data).map_err(|e| {
+                            error!("Can't deserialize event: {}", e);
+                            Error::Store(format!("Can't deserialize event: {}", e))
+                        })?
+                    } else {
+                        return Err(Error::Store("Can't decrypt key".to_owned()));
+                    }
+                } else {
+                    bincode::deserialize(data.as_slice()).map_err(|e| {
+                        error!("Can't deserialize event: {}", e);
+                        Error::Store(format!("Can't deserialize event: {}", e))
+                    })?
+                };
+                events.push(event);
+            } else {
+                break;
+            }
+        }
+        Ok(events)
     }
 
     /// Snapshot the state.
@@ -283,13 +329,17 @@ impl<P: PersistentActor> Store<P> {
     /// An error if the operation failed.
     ///
     fn snapshot(&mut self, actor: &P) -> Result<(), Error> {
-        let bytes = bincode::serialize(actor).map_err(|e| {
+        let data = bincode::serialize(actor).map_err(|e| {
             Error::Store(format!("Can't serialize state: {}", e))
         })?;
-        let bytes = if let Ok(key) = self.key_box.decrypt() {
-            self.encrypt(key.as_ref(), bytes.as_slice())?
+        let bytes = if let Some(key_box) = &self.key_box {
+            if let Ok(key) = key_box.decrypt() {
+                self.encrypt(key.as_ref(), data.as_slice())?
+            } else {
+                data
+            } 
         } else {
-            bytes
+            data
         };
         self.states.put(&self.event_counter.to_string(), &bytes)
     }
@@ -305,17 +355,27 @@ impl<P: PersistentActor> Store<P> {
     fn recover(&mut self) -> Result<Option<P>, Error> {
         debug!("Recovering state");
         if let Some((key, data)) = self.states.last() {
-            let bytes = if let Ok(key) = self.key_box.decrypt() {
-                self.decrypt(key.as_ref(), data.as_slice())?
+            let bytes = if let Some(key_box) = &self.key_box {
+                if let Ok(key) = key_box.decrypt() {
+                    self.decrypt(key.as_ref(), data.as_slice())?
+                } else {
+                    data
+                } 
             } else {
                 data
             };
             self.event_counter = key.parse().map_err(|e| {
                 Error::Store(format!("Can't parse event key: {}", e))
             })?;
-            let state: P = bincode::deserialize(&bytes).map_err(|e| {
+            let mut state: P = bincode::deserialize(&bytes).map_err(|e| {
                 Error::Store(format!("Can't deserialize state: {}", e))
             })?;
+            // Recover events from the last state.
+            let events = self.events(self.event_counter, usize::MAX)?;
+            for event in events {
+                state.apply(&event);
+                self.event_counter += 1;
+            }
             debug!("Recovered state: {:?}", state);
             Ok(Some(state))
         } else {
@@ -453,8 +513,6 @@ mod tests {
 
     use async_trait::async_trait;
 
-    use tracing_test::traced_test;
-
     #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestActor {
         pub value: i32,
@@ -528,9 +586,7 @@ mod tests {
     #[async_trait]
     impl PersistentActor for TestActor {
         fn apply(&mut self, event: &Self::Event) {
-            println!("Applying event: {:?}, value {}", event, self.value);
             self.value += event.0;
-            println!("Applied event: {:?}, value {}", event, self.value);
         }
     }
 
@@ -569,7 +625,6 @@ mod tests {
                     Ok(TestResponse::None)
                 }
                 TestMessage::GetValue => {
-                    println!("Getting value: {}", self.value);
                     Ok(TestResponse::Value(self.value))
                 }
             }
@@ -585,32 +640,38 @@ mod tests {
     }
 
     #[tokio::test]
-    #[traced_test]
+    //#[traced_test]
     async fn test_store_actor() {
         let (system, mut runner) = ActorSystem::create();
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;
         });
-
+        let password = b"0123456789abcdef0123456789abcdef";
         let db =
-            Store::<TestActor>::new("store", MemoryManager::default(), None)
+            Store::<TestActor>::new("store", MemoryManager::default(), Some(*password))
                 .unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
-        let actor = TestActor { value: 0 };
+        let mut actor = TestActor { value: 0 };
         store
             .tell(StoreCommand::Persist(TestEvent(10)))
             .await
             .unwrap();
-
+        actor.apply(&TestEvent(10));
         store
             .tell(StoreCommand::Snapshot(actor.clone()))
             .await
             .unwrap();
-
+        store
+            .tell(StoreCommand::Persist(TestEvent(10)))
+            .await
+            .unwrap();
+        actor.apply(&TestEvent(10));
         let response = store.ask(StoreCommand::Recover).await.unwrap();
-        println!("Recover response: {:?}", response);
+        if let StoreResponse::State(Some(state)) = response {
+            assert_eq!(state.value, actor.value);
+        }
     }
 
     #[tokio::test]
@@ -648,7 +709,7 @@ mod tests {
 
         let value = actor_ref.ask(TestMessage::GetValue).await.unwrap();
 
-        assert_eq!(value, TestResponse::Value(10));
+        assert_eq!(value, TestResponse::Value(20));
 
         actor_ref.stop().await;
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
