@@ -28,9 +28,13 @@ impl RocksDbManager {
     /// The RocksDb manager.
     ///
     pub fn new(path: &str) -> Self {
-        let db = DB::open_default(path).expect("Can not create the database.");
+        let mut options = Options::default();
+        options.create_if_missing(true);
+        options.create_missing_column_families(true);
+
+        let db = DB::open(&options, path).expect("Can not create the database.");
         Self {
-            opts: Options::default(),
+            opts: options,
             db: Arc::new(RwLock::new(db)),
         }
     }
