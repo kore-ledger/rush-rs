@@ -159,6 +159,7 @@ pub trait PersistentActor:
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
         let response = store.ask(StoreCommand::Recover).await?;
+
         if let StoreResponse::State(Some(state)) = response {
             self.update(state);
         }
