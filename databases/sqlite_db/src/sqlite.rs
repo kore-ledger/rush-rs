@@ -43,6 +43,7 @@ impl DbManager<SqliteCollection> for SqliteManager {
     fn create_collection(
         &self,
         identifier: &str,
+        prefix: &str,
     ) -> Result<SqliteCollection, Error> {
         // Open a connection to the database.
         let conn = open(&self.path).map_err(|_| {
@@ -51,14 +52,15 @@ impl DbManager<SqliteCollection> for SqliteManager {
 
         // Create statement to create a table.
         let stmt = format!(
-            "CREATE TABLE IF NOT EXISTS {} (id TEXT PRIMARY KEY, value BLOB NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS {} (prefix TEXT NOT NULL, sn TEXT NOT NULL, value \
+            BLOB NOT NULL, PRIMARY KEY (prefix, sn))",
             identifier
         );
         conn.execute(stmt.as_str(), ()).map_err(|_| {
             Error::CreateStore("fail SQLite create table".to_owned())
         })?;
 
-        Ok(SqliteCollection::new(conn, identifier))
+        Ok(SqliteCollection::new(conn, identifier, prefix))
     }
 }
 
@@ -66,14 +68,16 @@ impl DbManager<SqliteCollection> for SqliteManager {
 pub struct SqliteCollection {
     conn: Arc<Mutex<Connection>>,
     table: String,
+    prefix: String,
 }
 
 impl SqliteCollection {
     /// Create a new SQLite collection.
-    pub fn new(conn: Connection, table: &str) -> Self {
+    pub fn new(conn: Connection, table: &str, prefix: &str) -> Self {
         Self {
             conn: Arc::new(Mutex::new(conn)),
             table: table.to_owned(),
+            prefix: prefix.to_owned(),
         }
     }
 
@@ -85,11 +89,11 @@ impl SqliteCollection {
         let order = if reverse { "DESC" } else { "ASC" };
         let conn = self.conn.lock().expect("open connection");
         let query = format!(
-            "SELECT id, value FROM {} ORDER BY id {}",
-            self.table, order
+            "SELECT sn, value FROM {} WHERE prefix = ?1 ORDER BY sn {}",
+            self.table, order,
         );
         let mut stmt = conn.prepare(&query)?;
-        let mut rows = stmt.query([])?;
+        let mut rows = stmt.query(params![self.prefix])?;
         let mut values = Vec::new();
         while let Some(row) = rows.next()? {
             let key: String = row.get(0)?;
@@ -105,9 +109,9 @@ impl Collection for SqliteCollection {
             .conn
             .lock()
             .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
-        let query = format!("SELECT value FROM {} WHERE id = ?1", &self.table);
+        let query = format!("SELECT value FROM {} WHERE prefix = ?1 AND sn = ?2", &self.table);
         let row: Vec<u8> = conn
-            .query_row(&query, params![key], |row| row.get(0))
+            .query_row(&query, params![self.prefix, key], |row| row.get(0))
             .map_err(|_| Error::EntryNotFound)?;
 
         Ok(row)
@@ -119,10 +123,10 @@ impl Collection for SqliteCollection {
             .lock()
             .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
         let stmt = format!(
-            "INSERT OR REPLACE INTO {} (id, value) VALUES (?1, ?2)",
+            "INSERT OR REPLACE INTO {} (prefix, sn, value) VALUES (?1, ?2, ?3)",
             &self.table
         );
-        conn.execute(&stmt, params![key, data])
+        conn.execute(&stmt, params![self.prefix, key, data])
             .map_err(|_| Error::Store("sqlite insert error".to_owned()))?;
         Ok(())
     }
@@ -132,8 +136,8 @@ impl Collection for SqliteCollection {
             .conn
             .lock()
             .map_err(|_| Error::Store("SQLITE open connection".to_owned()))?;
-        let stmt = format!("DELETE FROM {} WHERE id = ?1", &self.table);
-        conn.execute(&stmt, params![key])
+        let stmt = format!("DELETE FROM {} WHERE prefix = ?1 AND sn = ?2", &self.table);
+        conn.execute(&stmt, params![self.prefix, key])
             .map_err(|_| Error::EntryNotFound)?;
         Ok(())
     }

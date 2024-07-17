@@ -17,12 +17,13 @@ where
     /// # Arguments
     ///
     /// - name: The name of the collection.
+    /// - prefix: The prefix to filter the values by.
     ///
     /// # Returns
     ///
     /// The collection.
     ///
-    fn create_collection(&self, name: &str) -> Result<C, Error>;
+    fn create_collection(&self, name: &str, prefix: &str) -> Result<C, Error>;
 
     /// Stop manager.
     /// 
@@ -206,7 +207,7 @@ macro_rules! test_store_trait {
             #[test]
             fn test_create() {
                 let manager = <$type>::default();
-                let store: $type2 = manager.create_collection("test").unwrap();
+                let store: $type2 = manager.create_collection("test", "test").unwrap();
                 assert_eq!(store.name(), "test");
                 assert!(manager.stop().is_ok())
             }
@@ -215,7 +216,7 @@ macro_rules! test_store_trait {
             fn test_put_get() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
-                    manager.create_collection("test").unwrap();
+                    manager.create_collection("test", "test").unwrap();
                 store.put("key", b"value").unwrap();
                 assert_eq!(store.get("key").unwrap(), b"value");
                 assert!(manager.stop().is_ok())
@@ -225,7 +226,7 @@ macro_rules! test_store_trait {
             fn test_del() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
-                    manager.create_collection("test").unwrap();
+                    manager.create_collection("test", "test").unwrap();
                 store.put("key", b"value").unwrap();
                 store.del("key").unwrap();
                 assert_eq!(store.get("key"), Err(Error::EntryNotFound));
@@ -236,7 +237,7 @@ macro_rules! test_store_trait {
             fn test_iter() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
-                    manager.create_collection("test").unwrap();
+                    manager.create_collection("test", "test").unwrap();
                 store.put("key1", b"value1").unwrap();
                 store.put("key2", b"value2").unwrap();
                 store.put("key3", b"value3").unwrap();
@@ -261,22 +262,22 @@ macro_rules! test_store_trait {
             fn test_iter_reverse() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
-                    manager.create_collection("test").unwrap();
-                store.put("key1", b"value1").unwrap();
-                store.put("key2", b"value2").unwrap();
-                store.put("key3", b"value3").unwrap();
+                    manager.create_collection("test", "test").unwrap();
+                store.put("test.key1", b"value1").unwrap();
+                store.put("test.key2", b"value2").unwrap();
+                store.put("test.key3", b"value3").unwrap();
                 let mut iter = store.iter(true);
                 assert_eq!(
                     iter.next(),
-                    Some(("key3".to_string(), b"value3".to_vec()))
+                    Some(("test.key3".to_string(), b"value3".to_vec()))
                 );
                 assert_eq!(
                     iter.next(),
-                    Some(("key2".to_string(), b"value2".to_vec()))
+                    Some(("test.key2".to_string(), b"value2".to_vec()))
                 );
                 assert_eq!(
                     iter.next(),
-                    Some(("key1".to_string(), b"value1".to_vec()))
+                    Some(("test.key1".to_string(), b"value1".to_vec()))
                 );
                 assert_eq!(iter.next(), None);
                 assert!(manager.stop().is_ok())
@@ -286,7 +287,7 @@ macro_rules! test_store_trait {
             fn test_last() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
-                    manager.create_collection("test").unwrap();
+                    manager.create_collection("test", "test").unwrap();
                 store.put("key1", b"value1").unwrap();
                 store.put("key2", b"value2").unwrap();
                 store.put("key3", b"value3").unwrap();
@@ -302,7 +303,7 @@ macro_rules! test_store_trait {
             fn test_get_by_range() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
-                    manager.create_collection("test").unwrap();
+                    manager.create_collection("test", "test").unwrap();
                 store.put("key1", b"value1").unwrap();
                 store.put("key2", b"value2").unwrap();
                 store.put("key3", b"value3").unwrap();

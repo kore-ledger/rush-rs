@@ -15,9 +15,10 @@ use std::collections::BTreeMap;
 pub struct MemoryManager;
 
 impl DbManager<MemoryStore> for MemoryManager {
-    fn create_collection(&self, name: &str) -> Result<MemoryStore, Error> {
+    fn create_collection(&self, name: &str, prefix: &str) -> Result<MemoryStore, Error> {
         Ok(MemoryStore {
             name: name.to_owned(),
+            prefix: prefix.to_owned(),
             data: BTreeMap::new(),
         })
     }
@@ -27,6 +28,7 @@ impl DbManager<MemoryStore> for MemoryManager {
 ///
 pub struct MemoryStore {
     name: String,
+    prefix: String,
     data: BTreeMap<String, Vec<u8>>,
 }
 
@@ -36,19 +38,22 @@ impl Collection for MemoryStore {
     }
 
     fn get(&self, key: &str) -> Result<Vec<u8>, Error> {
-        match self.data.get(key) {
+        let key = format!("{}.{}", self.prefix, key);
+        match self.data.get(&key) {
             Some(value) => Ok(value.clone()),
             None => Err(Error::EntryNotFound),
         }
     }
 
     fn put(&mut self, key: &str, data: &[u8]) -> Result<(), Error> {
-        self.data.insert(key.to_string(), data.to_vec());
+        let key = format!("{}.{}", self.prefix, key);
+        self.data.insert(key, data.to_vec());
         Ok(())
     }
 
     fn del(&mut self, key: &str) -> Result<(), Error> {
-        match self.data.remove(key) {
+        let key = format!("{}.{}", self.prefix, key);
+        match self.data.remove(&key) {
             Some(_) => Ok(()),
             None => Err(Error::EntryNotFound),
         }
@@ -58,19 +63,26 @@ impl Collection for MemoryStore {
         &'a self,
         reverse: bool,
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a> {
-        //let iter = self.data.iter().filter(move |(key, _)| key.starts_with(prefix));
         if reverse {
             Box::new(
                 self.data
                     .iter()
                     .rev()
-                    .map(|(key, value)| (key.clone(), value.clone())),
+                    .filter(|(key, _)| key.starts_with(&self.prefix))
+                    .map(|(key, value)| {
+                        let key = &key[self.prefix.len() + 1..];
+                        (key.to_owned(), value.clone())
+                    }),
             )
         } else {
             Box::new(
                 self.data
                     .iter()
-                    .map(|(key, value)| (key.clone(), value.clone())),
+                    .filter(|(key, _)| key.starts_with(&self.prefix))
+                    .map(|(key, value)| {
+                        let key = &key[self.prefix.len() + 1..];
+                        (key.to_owned(), value.clone())
+                    }),
             )
         }
     }

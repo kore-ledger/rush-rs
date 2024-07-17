@@ -54,7 +54,7 @@ impl Default for RocksDbManager {
 }
 
 impl DbManager<RocksDbStore> for RocksDbManager {
-    fn create_collection(&self, name: &str) -> Result<RocksDbStore, Error> {
+    fn create_collection(&self, name: &str, prefix: &str) -> Result<RocksDbStore, Error> {
         let mut db = self
             .db
             .write()
@@ -65,6 +65,7 @@ impl DbManager<RocksDbStore> for RocksDbManager {
         }
         Ok(RocksDbStore {
             name: name.to_owned(),
+            prefix: prefix.to_owned(),
             store: self.db.clone(),
         })
     }
@@ -82,6 +83,7 @@ impl DbManager<RocksDbStore> for RocksDbManager {
 /// RocksDb store.
 pub struct RocksDbStore {
     name: String,
+    prefix: String,
     store: Arc<RwLock<DB>>,
     //column: ColumnFamily,
 }
@@ -97,6 +99,7 @@ impl Collection for RocksDbStore {
             .read()
             .map_err(|e| Error::Get(format!("{:?}", e)))?;
         if let Some(handle) = db.cf_handle(&self.name) {
+            let key = format!("{}.{}", self.prefix, key);
             let result = db
                 .get_cf(handle, key)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?;
@@ -117,6 +120,7 @@ impl Collection for RocksDbStore {
             .read()
             .map_err(|e| Error::Get(format!("{:?}", e)))?;
         if let Some(handle) = db.cf_handle(&self.name) {
+            let key = format!("{}.{}", self.prefix, key);
             Ok(db
                 .put_cf(handle, key, &data)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
@@ -133,6 +137,7 @@ impl Collection for RocksDbStore {
             .read()
             .map_err(|e| Error::Get(format!("{:?}", e)))?;
         if let Some(handle) = db.cf_handle(&self.name) {
+            let key = format!("{}.{}", self.prefix, key);
             Ok(db
                 .delete_cf(handle, key)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
@@ -147,7 +152,7 @@ impl Collection for RocksDbStore {
         &'a self,
         reverse: bool,
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a> {
-        Box::new(RocksDbIterator::new(&self.store, &self.name, reverse))
+        Box::new(RocksDbIterator::new(&self.store, &self.name, &self.prefix, reverse))
     }
 
     fn flush(&self) -> Result<(), Error> {
@@ -175,12 +180,13 @@ type GuardIter<'a> = (
 pub struct RocksDbIterator<'a> {
     store: &'a Arc<RwLock<DB>>,
     name: String,
+    prefix: String,
     mode: IteratorMode<'a>,
     current: Option<GuardIter<'a>>,
 }
 
 impl<'a> RocksDbIterator<'a> {
-    pub fn new(store: &'a Arc<RwLock<DB>>, name: &str, reverse: bool) -> Self {
+    pub fn new(store: &'a Arc<RwLock<DB>>, name: &str, prefix: &str, reverse: bool) -> Self {
         let mode = if reverse {
             IteratorMode::End
         } else {
@@ -189,6 +195,7 @@ impl<'a> RocksDbIterator<'a> {
         Self {
             store,
             name: name.to_owned(),
+            prefix: prefix.to_owned(),
             mode,
             current: None,
         }
@@ -214,14 +221,17 @@ impl<'a> Iterator for RocksDbIterator<'a> {
             self.current = Some((Arc::new(guard), iter));
             &mut self.current.as_mut().unwrap().1
         };
-        if let Some(Ok((key, value))) = iter.next() {
+        while let Some(Ok((key, value))) = iter.next() {
             let key = String::from_utf8(key.to_vec())
                 .expect("Can not convert key to string.");
-            Some((key, value.to_vec()))
-        } else {
-            self.current = None;
-            None
-        }
+            if key.starts_with(&self.prefix) {
+                let key = &key[self.prefix.len() + 1..];
+                return Some((key.to_owned(), value.to_vec()));
+            }
+        } 
+        self.current = None;
+        None
+    
     }
 }
 

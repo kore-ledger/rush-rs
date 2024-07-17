@@ -150,12 +150,13 @@ pub trait PersistentActor:
     ///
     async fn start_store<C: Collection>(
         &mut self,
+        name: &str,
         ctx: &mut ActorContext<Self>,
         manager: impl DbManager<C>,
         password: Option<[u8; 32]>,
     ) -> Result<(), ActorError> {
-        let name = ctx.path().key();
-        let store = Store::<Self>::new(&name, manager, password)
+        let prefix = ctx.path().key();
+        let store = Store::<Self>::new(&name, &prefix, manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
         let response = store.ask(StoreCommand::Recover).await?;
@@ -229,6 +230,7 @@ impl<P: PersistentActor> Store<P> {
     ///
     pub fn new<C>(
         name: &str,
+        prefix: &str,
         manager: impl DbManager<C>,
         password: Option<[u8; 32]>,
     ) -> Result<Self, Error>
@@ -245,8 +247,8 @@ impl<P: PersistentActor> Store<P> {
             },
             None => None,
         };
-        let events = manager.create_collection(&format!("{}_events", name))?;
-        let states = manager.create_collection(&format!("{}_states", name))?;
+        let events = manager.create_collection(&format!("{}_events", name), prefix)?;
+        let states = manager.create_collection(&format!("{}_states", name), prefix)?;
         Ok(Self {
             event_counter: 0,
             events: Box::new(events),
@@ -555,7 +557,7 @@ mod tests {
             ctx: &mut ActorContext<Self>,
         ) -> Result<(), ActorError> {
             let db =
-                Store::<Self>::new("store", MemoryManager::default(), None)
+                Store::<Self>::new("store", "prefix", MemoryManager::default(), None)
                     .unwrap();
             let store = ctx.create_child("store", db).await.unwrap();
             let response = store.ask(StoreCommand::Recover).await.unwrap();
@@ -652,7 +654,7 @@ mod tests {
         });
         let password = b"0123456789abcdef0123456789abcdef";
         let db =
-            Store::<TestActor>::new("store", MemoryManager::default(), Some(*password))
+            Store::<TestActor>::new("store", "test", MemoryManager::default(), Some(*password))
                 .unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
@@ -723,6 +725,7 @@ mod tests {
         let key = [0u8; 32];
         let store = Store::<TestActor>::new(
             "store",
+            "test",
             MemoryManager::default(),
             Some(key),
         )
