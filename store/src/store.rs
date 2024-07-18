@@ -138,7 +138,9 @@ pub trait PersistentActor:
     /// # Arguments
     ///
     /// - ctx: The actor context.
+    /// - name: Actor type.
     /// - manager: The database manager.
+    /// - password: Optional password.
     ///
     /// # Returns
     ///
