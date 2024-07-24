@@ -88,7 +88,7 @@ where
         debug!("Creating actor {} context.", &self.path);
         let mut ctx: ActorContext<A> = ActorContext::new(
             self.path.clone(),
-            system,
+            system.clone(),
             self.token.clone(),
             self.error_sender.clone(),
             self.inner_sender.clone(),
@@ -269,6 +269,7 @@ where
                 }
             }
             InnerMessage::Fail(error) => {
+                // If the actor has a parent, send the fail to the parent.
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     let (action_sender, action_receiver) = oneshot::channel();
                     //self.action_receiver = Some(action_receiver);
@@ -304,8 +305,12 @@ where
                             }
                         }
                     }
+                } else {
+                    // If the actor has no parent, set the state to stopped.
+                    ctx.set_state(ActorLifecycle::Stopped);
+                    ctx.stop().await;
                 }
-            }
+            } 
         }
     }
 
