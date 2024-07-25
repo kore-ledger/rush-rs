@@ -241,16 +241,18 @@ impl<P: PersistentActor> Store<P> {
     {
         let key_box = match password {
             Some(key) => {
-                let mut key_box = EncryptedMem::new();        
-                key_box
-                    .encrypt(&key)
-                    .map_err(|_| Error::Store("Can't encrypt password.".to_owned()))?;
-                Some(key_box)    
-            },
+                let mut key_box = EncryptedMem::new();
+                key_box.encrypt(&key).map_err(|_| {
+                    Error::Store("Can't encrypt password.".to_owned())
+                })?;
+                Some(key_box)
+            }
             None => None,
         };
-        let events = manager.create_collection(&format!("{}_events", name), prefix)?;
-        let states = manager.create_collection(&format!("{}_states", name), prefix)?;
+        let events =
+            manager.create_collection(&format!("{}_events", name), prefix)?;
+        let states =
+            manager.create_collection(&format!("{}_states", name), prefix)?;
         Ok(Self {
             event_counter: 0,
             events: Box::new(events),
@@ -295,19 +297,29 @@ impl<P: PersistentActor> Store<P> {
     }
 
     /// Retrieve events.
-    fn events(&mut self, from: usize, to: usize) -> Result<Vec<P::Event>, Error> {
+    fn events(
+        &mut self,
+        from: usize,
+        to: usize,
+    ) -> Result<Vec<P::Event>, Error> {
         let mut events = Vec::new();
         for i in from..to {
             if let Ok(data) = self.events.get(&i.to_string()) {
                 let event: P::Event = if let Some(key_box) = &self.key_box {
                     if let Ok(key) = key_box.decrypt() {
-                        let data = self.decrypt(key.as_ref(), data.as_slice())?;
+                        let data =
+                            self.decrypt(key.as_ref(), data.as_slice())?;
                         bincode::deserialize(&data).map_err(|e| {
                             error!("Can't deserialize event: {}", e);
-                            Error::Store(format!("Can't deserialize event: {}", e))
+                            Error::Store(format!(
+                                "Can't deserialize event: {}",
+                                e
+                            ))
                         })?
                     } else {
-                        return Err(Error::Store("Can't decrypt key".to_owned()));
+                        return Err(Error::Store(
+                            "Can't decrypt key".to_owned(),
+                        ));
                     }
                 } else {
                     bincode::deserialize(data.as_slice()).map_err(|e| {
@@ -342,7 +354,7 @@ impl<P: PersistentActor> Store<P> {
                 self.encrypt(key.as_ref(), data.as_slice())?
             } else {
                 data
-            } 
+            }
         } else {
             data
         };
@@ -365,7 +377,7 @@ impl<P: PersistentActor> Store<P> {
                     self.decrypt(key.as_ref(), data.as_slice())?
                 } else {
                     data
-                } 
+                }
             } else {
                 data
             };
@@ -466,7 +478,6 @@ where
     type Message = StoreCommand<P, P::Event>;
     type Response = StoreResponse<P>;
     type Event = StoreEvent;
-
 }
 
 #[async_trait]
@@ -558,9 +569,13 @@ mod tests {
             &mut self,
             ctx: &mut ActorContext<Self>,
         ) -> Result<(), ActorError> {
-            let db =
-                Store::<Self>::new("store", "prefix", MemoryManager::default(), None)
-                    .unwrap();
+            let db = Store::<Self>::new(
+                "store",
+                "prefix",
+                MemoryManager::default(),
+                None,
+            )
+            .unwrap();
             let store = ctx.create_child("store", db).await.unwrap();
             let response = store.ask(StoreCommand::Recover).await.unwrap();
             debug!("Recover response: {:?}", response);
@@ -631,9 +646,7 @@ mod tests {
                         .unwrap();
                     Ok(TestResponse::None)
                 }
-                TestMessage::GetValue => {
-                    Ok(TestResponse::Value(self.value))
-                }
+                TestMessage::GetValue => Ok(TestResponse::Value(self.value)),
             }
         }
 
@@ -655,9 +668,13 @@ mod tests {
             runner.run().await;
         });
         let password = b"0123456789abcdef0123456789abcdef";
-        let db =
-            Store::<TestActor>::new("store", "test", MemoryManager::default(), Some(*password))
-                .unwrap();
+        let db = Store::<TestActor>::new(
+            "store",
+            "test",
+            MemoryManager::default(),
+            Some(*password),
+        )
+        .unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
         let mut actor = TestActor { value: 0 };

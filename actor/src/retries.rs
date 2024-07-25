@@ -121,12 +121,7 @@ mod tests {
             );
             let path = ctx.path().clone() / &self.child;
             let response = self
-                .apply_retries(
-                    ctx,
-                    path,
-                    &mut strategy,
-                    ChildCommand,
-                )
+                .apply_retries(ctx, path, &mut strategy, ChildCommand)
                 .await
                 .unwrap();
             Ok(ParentResponse(response.0))

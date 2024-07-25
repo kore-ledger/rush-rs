@@ -32,6 +32,10 @@ use tracing::{debug, error};
 pub type InnerSender<A> = mpsc::UnboundedSender<InnerMessage<A>>;
 pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerMessage<A>>;
 
+/// Child sender and receiver for child actions.
+pub type ChildSender = mpsc::UnboundedSender<ChildAction>;
+pub type ChildReceiver = mpsc::UnboundedReceiver<ChildAction>;
+
 /// Actor runner.
 pub(crate) struct ActorRunner<A: Actor> {
     path: ActorPath,
@@ -43,6 +47,7 @@ pub(crate) struct ActorRunner<A: Actor> {
     error_receiver: ChildErrorReceiver,
     inner_sender: InnerSender<A>,
     inner_receiver: InnerReceiver<A>,
+    child_receiver: ChildReceiver,
     token: CancellationToken,
 }
 
@@ -55,13 +60,15 @@ where
         path: ActorPath,
         actor: A,
         parent_sender: Option<ChildErrorSender>,
-    ) -> (Self, ActorRef<A>) {
+    ) -> (Self, ActorRef<A>, ChildSender) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
         let (error_sender, error_receiver) = mpsc::unbounded_channel();
         let (event_sender, event_receiver) = broadcast::channel(100);
         let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
+        let (child_sender, child_receiver) = mpsc::unbounded_channel();
         let helper = HandleHelper::new(sender);
+
         //let error_helper = ErrorHelper::new(error_sender);
         let actor_ref = ActorRef::new(path.clone(), helper, event_receiver);
         let token = CancellationToken::new();
@@ -75,9 +82,10 @@ where
             error_receiver,
             inner_sender,
             inner_receiver,
+            child_receiver,
             token,
         };
-        (runner, actor_ref)
+        (runner, actor_ref, child_sender)
     }
 
     /// Init the actor runner.
@@ -217,6 +225,18 @@ where
                         break;
                     }
                 }
+                // Handle child action from `child_receiver`.
+                action = self.child_receiver.recv() => {
+                    if let Some(action) = action {
+                        match action {
+                            ChildAction::Stop => {
+                                ctx.set_state(ActorLifecycle::Stopped);
+                                ctx.stop().await;
+                            }
+                            _ => {},
+                        }
+                    }
+                }
                 _ = self.token.cancelled() => {
                     debug!("Actor {} is stopped.", &self.path);
                     ctx.set_state(ActorLifecycle::Stopped);
@@ -310,7 +330,7 @@ where
                     ctx.set_state(ActorLifecycle::Stopped);
                     ctx.stop().await;
                 }
-            } 
+            }
         }
     }
 
@@ -485,10 +505,11 @@ mod tests {
         let (event_sender, _) = mpsc::channel(100);
         let actors = Arc::new(RwLock::new(HashMap::new()));
         let helpers = Arc::new(RwLock::new(HashMap::new()));
-        let system = SystemRef::new(actors, helpers, event_sender);
+        let senders = Arc::new(RwLock::new(Vec::new()));
+        let system = SystemRef::new(actors, helpers, senders, event_sender);
 
         let actor = TestActor { failed: false };
-        let (mut runner, actor_ref) =
+        let (mut runner, actor_ref, _) =
             ActorRunner::create(ActorPath::from("/user/test"), actor, None);
         let inner_system = system.clone();
         // Init the actor runner.
@@ -513,7 +534,7 @@ mod tests {
 
         let actor = TestActor { failed: true };
 
-        let (mut runner, actor_ref) =
+        let (mut runner, actor_ref, _) =
             ActorRunner::create(ActorPath::from("/user/test"), actor, None);
         let inner_system = system.clone();
         // Init the actor runner.

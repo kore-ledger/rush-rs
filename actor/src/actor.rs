@@ -10,7 +10,7 @@
 
 use crate::{
     handler::HandleHelper,
-    runner::{InnerMessage, InnerSender},
+    runner::{ChildSender, InnerMessage, InnerSender},
     supervision::SupervisionStrategy,
     system::SystemRef,
     ActorPath, Error,
@@ -31,7 +31,6 @@ use std::fmt::Debug;
 /// The `ActorContext` is the context of the actor.
 /// It is passed to the actor when it is started, and can be used to interact with the actor
 /// system.
-#[derive(Clone)]
 pub struct ActorContext<A: Actor> {
     /// The path of the actor.
     path: ActorPath,
@@ -45,6 +44,8 @@ pub struct ActorContext<A: Actor> {
     error_sender: ChildErrorSender,
     /// Inner sender.
     inner_sender: InnerSender<A>,
+    /// Child action senders.
+    child_senders: Vec<ChildSender>,
     /// Cancellation token.
     token: CancellationToken,
 }
@@ -81,6 +82,7 @@ where
             error: None,
             error_sender,
             inner_sender,
+            child_senders: Vec::new(),
             token,
         }
     }
@@ -228,6 +230,9 @@ where
 
     /// Stop the actor.
     pub async fn stop(&mut self) {
+        while let Some(sender) = self.child_senders.pop() {
+            let _ = sender.send(ChildAction::Stop);
+        }
         self.set_state(ActorLifecycle::Stopped);
         self.token.cancel();
         self.system.remove_actor(self.path()).await;
@@ -249,7 +254,7 @@ where
     /// Returns an error if the child actor could not be created.
     ///
     pub async fn create_child<C>(
-        &self,
+        &mut self,
         name: &str,
         actor: C,
     ) -> Result<ActorRef<C>, Error>
@@ -257,9 +262,12 @@ where
         C: Actor + Handler<C>,
     {
         let path = self.path.clone() / name;
-        self.system
+        let (actor_ref, sender) = self
+            .system
             .create_actor_path(path, actor, Some(self.error_sender.clone()))
-            .await
+            .await?;
+        self.child_senders.push(sender);
+        Ok(actor_ref)
     }
 
     /// Retrieve a child actor running under this actor.
@@ -296,7 +304,7 @@ where
     /// Returns an error if the child actor could not be created.
     ///
     pub async fn get_or_create_child<C, F>(
-        &self,
+        &mut self,
         name: &str,
         actor_fn: F,
     ) -> Result<ActorRef<C>, Error>
@@ -305,13 +313,18 @@ where
         F: FnOnce() -> C,
     {
         let path = self.path.clone() / name;
-        self.system
+        let (actor_ref, sender) = self
+            .system
             .get_or_create_actor_path(
                 &path,
                 Some(self.error_sender.clone()),
                 actor_fn,
             )
-            .await
+            .await?;
+        if let Some(sender) = sender {
+            self.child_senders.push(sender);
+        }
+        Ok(actor_ref)
     }
 
     /// Returns the lifecycle state of the actor.
@@ -862,7 +875,8 @@ mod test {
         let (event_sender, _event_receiver) = mpsc::channel(100);
         let actors = Arc::new(RwLock::new(HashMap::new()));
         let helpers = Arc::new(RwLock::new(HashMap::new()));
-        let system = SystemRef::new(actors, helpers, event_sender);
+        let senders = Arc::new(RwLock::new(Vec::new()));
+        let system = SystemRef::new(actors, helpers, senders, event_sender);
         let actor = TestActor { counter: 0 };
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
         actor_ref.tell(TestMessage(10)).await.unwrap();

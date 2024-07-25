@@ -32,7 +32,8 @@ impl RocksDbManager {
         options.create_if_missing(true);
         options.create_missing_column_families(true);
 
-        let db = DB::open(&options, path).expect("Can not create the database.");
+        let db =
+            DB::open(&options, path).expect("Can not create the database.");
         Self {
             opts: options,
             db: Arc::new(RwLock::new(db)),
@@ -54,7 +55,11 @@ impl Default for RocksDbManager {
 }
 
 impl DbManager<RocksDbStore> for RocksDbManager {
-    fn create_collection(&self, name: &str, prefix: &str) -> Result<RocksDbStore, Error> {
+    fn create_collection(
+        &self,
+        name: &str,
+        prefix: &str,
+    ) -> Result<RocksDbStore, Error> {
         let mut db = self
             .db
             .write()
@@ -75,8 +80,7 @@ impl DbManager<RocksDbStore> for RocksDbManager {
             .db
             .read()
             .map_err(|e| Error::Store(format!("{:?}", e)))?;
-        Ok(db.flush()
-            .map_err(|e| Error::Store(format!("{:?}", e)))?)
+        Ok(db.flush().map_err(|e| Error::Store(format!("{:?}", e)))?)
     }
 }
 
@@ -152,7 +156,12 @@ impl Collection for RocksDbStore {
         &'a self,
         reverse: bool,
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a> {
-        Box::new(RocksDbIterator::new(&self.store, &self.name, &self.prefix, reverse))
+        Box::new(RocksDbIterator::new(
+            &self.store,
+            &self.name,
+            &self.prefix,
+            reverse,
+        ))
     }
 
     fn flush(&self) -> Result<(), Error> {
@@ -186,7 +195,12 @@ pub struct RocksDbIterator<'a> {
 }
 
 impl<'a> RocksDbIterator<'a> {
-    pub fn new(store: &'a Arc<RwLock<DB>>, name: &str, prefix: &str, reverse: bool) -> Self {
+    pub fn new(
+        store: &'a Arc<RwLock<DB>>,
+        name: &str,
+        prefix: &str,
+        reverse: bool,
+    ) -> Self {
         let mode = if reverse {
             IteratorMode::End
         } else {
@@ -228,10 +242,9 @@ impl<'a> Iterator for RocksDbIterator<'a> {
                 let key = &key[self.prefix.len() + 1..];
                 return Some((key.to_owned(), value.to_vec()));
             }
-        } 
+        }
         self.current = None;
         None
-    
     }
 }
 
@@ -246,7 +259,4 @@ mod tests {
     test_store_trait! {
         unit_test_rocksdb_manager:crate::rocksdb::RocksDbManager:RocksDbStore
     }
-
-
-
 }

@@ -15,7 +15,11 @@ use std::collections::BTreeMap;
 pub struct MemoryManager;
 
 impl DbManager<MemoryStore> for MemoryManager {
-    fn create_collection(&self, name: &str, prefix: &str) -> Result<MemoryStore, Error> {
+    fn create_collection(
+        &self,
+        name: &str,
+        prefix: &str,
+    ) -> Result<MemoryStore, Error> {
         Ok(MemoryStore {
             name: name.to_owned(),
             prefix: prefix.to_owned(),

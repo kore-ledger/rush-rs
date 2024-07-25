@@ -8,7 +8,7 @@
 //!
 
 use crate::{
-    actor::ChildErrorSender, runner::ActorRunner, Actor, ActorPath, ActorRef,
+    actor::ChildErrorSender, runner::{ActorRunner, ChildSender}, Actor, ActorPath, ActorRef,
     Error, Handler,
 };
 
@@ -34,9 +34,14 @@ impl ActorSystem {
         let (event_sender, event_receiver) = mpsc::channel(100);
         let actors = Arc::new(RwLock::new(HashMap::new()));
         let helpers = Arc::new(RwLock::new(HashMap::new()));
+        let senders = Arc::new(RwLock::new(Vec::new()));
         let token = CancellationToken::new();
-        let system =
-            SystemRef::new(actors.clone(), helpers.clone(), event_sender);
+        let system = SystemRef::new(
+            actors.clone(),
+            helpers.clone(),
+            senders,
+            event_sender,
+        );
         let runner = SystemRunner::new(token, event_receiver);
         (system, runner)
     }
@@ -61,6 +66,9 @@ pub struct SystemRef {
     /// The helpers for this actor system.
     helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
 
+    /// The root actor sender.
+    senders: Arc<RwLock<Vec<ChildSender>>>,
+
     /// The event sender.
     event_sender: mpsc::Sender<SystemEvent>,
 }
@@ -74,11 +82,13 @@ impl SystemRef {
         helpers: Arc<
             RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>,
         >,
+        senders: Arc<RwLock<Vec<ChildSender>>>,
         event_sender: mpsc::Sender<SystemEvent>,
     ) -> Self {
         SystemRef {
             actors,
             helpers,
+            senders,
             event_sender,
         }
     }
@@ -111,7 +121,7 @@ impl SystemRef {
         path: ActorPath,
         actor: A,
         error_helper: Option<ChildErrorSender>,
-    ) -> Result<ActorRef<A>, Error>
+    ) -> Result<(ActorRef<A>, ChildSender), Error>
     where
         A: Actor + Handler<A>,
     {
@@ -124,7 +134,7 @@ impl SystemRef {
 
         // Create the actor runner and init it.
         let system = self.clone();
-        let (mut runner, actor_ref) =
+        let (mut runner, actor_ref, child_sender) =
             ActorRunner::create(path, actor, error_helper);
         tokio::spawn(async move {
             runner.init(system).await;
@@ -135,7 +145,7 @@ impl SystemRef {
         let any = Box::new(actor_ref.clone());
         actors.insert(path, any);
 
-        Ok(actor_ref)
+        Ok((actor_ref, child_sender))
     }
 
     /// Launches a new top level actor on th is actor system at the '/user'
@@ -165,7 +175,11 @@ impl SystemRef {
         A: Actor + Handler<A>,
     {
         let path = ActorPath::from("/user") / name;
-        self.create_actor_path::<A>(path, actor, None).await
+        let (actor_ref, sender) =
+            self.create_actor_path::<A>(path, actor, None).await?;
+        let mut senders = self.senders.write().await;
+        senders.push(sender);
+        Ok(actor_ref)
     }
 
     /// Retrieve or create a new actor on this actor system if it does not exist yet.
@@ -174,18 +188,20 @@ impl SystemRef {
         path: &ActorPath,
         error_helper: Option<ChildErrorSender>,
         actor_fn: F,
-    ) -> Result<ActorRef<A>, Error>
+    ) -> Result<(ActorRef<A>, Option<ChildSender>), Error>
     where
         A: Actor + Handler<A>,
         F: FnOnce() -> A,
     {
         let actors = self.actors.read().await;
         match self.get_actor(path).await {
-            Some(actor) => Ok(actor),
+            Some(actor) => Ok((actor, None)),
             None => {
                 drop(actors);
-                self.create_actor_path(path.clone(), actor_fn(), error_helper)
-                    .await
+                let (actor_ref, sender) = self
+                    .create_actor_path(path.clone(), actor_fn(), error_helper)
+                    .await?;
+                Ok((actor_ref, Some(sender)))
             }
         }
     }
@@ -215,8 +231,14 @@ impl SystemRef {
         F: FnOnce() -> A,
     {
         let path = ActorPath::from("/user") / name;
-        self.get_or_create_actor_path::<A, F>(&path, None, actor_fn)
-            .await
+        let (actor_ref, sender) = self
+            .get_or_create_actor_path::<A, F>(&path, None, actor_fn)
+            .await?;
+        if let Some(sender) = sender {
+            let mut senders = self.senders.write().await;
+            senders.push(sender);
+        }
+        Ok(actor_ref)
     }
 
     /// Remove an actor from this actor system.

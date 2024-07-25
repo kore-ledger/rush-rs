@@ -109,7 +109,10 @@ impl Collection for SqliteCollection {
             .conn
             .lock()
             .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
-        let query = format!("SELECT value FROM {} WHERE prefix = ?1 AND sn = ?2", &self.table);
+        let query = format!(
+            "SELECT value FROM {} WHERE prefix = ?1 AND sn = ?2",
+            &self.table
+        );
         let row: Vec<u8> = conn
             .query_row(&query, params![self.prefix, key], |row| row.get(0))
             .map_err(|_| Error::EntryNotFound)?;
@@ -136,7 +139,10 @@ impl Collection for SqliteCollection {
             .conn
             .lock()
             .map_err(|_| Error::Store("SQLITE open connection".to_owned()))?;
-        let stmt = format!("DELETE FROM {} WHERE prefix = ?1 AND sn = ?2", &self.table);
+        let stmt = format!(
+            "DELETE FROM {} WHERE prefix = ?1 AND sn = ?2",
+            &self.table
+        );
         conn.execute(&stmt, params![self.prefix, key])
             .map_err(|_| Error::EntryNotFound)?;
         Ok(())

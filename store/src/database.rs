@@ -26,8 +26,8 @@ where
     fn create_collection(&self, name: &str, prefix: &str) -> Result<C, Error>;
 
     /// Stop manager.
-    /// 
-    
+    ///
+
     fn stop(self) -> Result<(), Error> {
         Ok(())
     }
@@ -122,7 +122,7 @@ pub trait Collection: Sync + Send + 'static {
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a>;
 
     /// Flush collection.
-    /// 
+    ///
     fn flush(&self) -> Result<(), Error> {
         Ok(())
     }
@@ -207,7 +207,8 @@ macro_rules! test_store_trait {
             #[test]
             fn test_create() {
                 let manager = <$type>::default();
-                let store: $type2 = manager.create_collection("test", "test").unwrap();
+                let store: $type2 =
+                    manager.create_collection("test", "test").unwrap();
                 assert_eq!(store.name(), "test");
                 assert!(manager.stop().is_ok())
             }
