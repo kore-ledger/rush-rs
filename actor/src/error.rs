@@ -28,6 +28,9 @@ pub enum Error {
     /// Actor not found error.
     #[error("Actor {0} not found.")]
     NotFound(ActorPath),
+    /// An error occurred while retrieving an actor.
+    #[error("Actor {0} not exist.")]
+    NotExists(ActorPath),
     /// An error occurred while stopping an actor.
     #[error("An error occurred while stopping an actor.")]
     Stop,
@@ -55,4 +58,10 @@ pub enum Error {
     /// An error that affects the state. Contains the valid state.
     #[error("State error: {0}")]
     State(String),
+    /// The maximum number of retries has been reached.
+    #[error("The maximum number of retries has been reached.")]
+    ReTry,
+    /// Can not get a helper.
+    #[error("An attempt was made to access a helper that does not exist.")]
+    NotHelper,
 }
