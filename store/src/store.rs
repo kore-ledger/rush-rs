@@ -133,6 +133,44 @@ pub trait PersistentActor:
         Ok(())
     }
 
+    /// Find a state.
+    /// 
+    /// # Arguments
+    /// 
+    /// - filter: The filter function.
+    /// 
+    /// # Returns
+    /// 
+    /// The state if found.
+    /// 
+    /// # Errors
+    /// 
+    /// An error if the operation failed.
+    /// 
+    async fn find(
+        &mut self,
+        filter: for<'a> fn(&'a Self) -> bool,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<Option<Self>, ActorError> {
+        let store = match ctx.get_child::<Store<Self>>("store").await {
+            Some(store) => store,
+            None => {
+                return Err(ActorError::Store(
+                    "Can't get store actor".to_string(),
+                ))
+            }
+        };
+        let response = store
+            .ask(StoreCommand::Find(filter))
+            .await
+            .map_err(|e| ActorError::Store(e.to_string()))?;
+        if let StoreResponse::State(state) = response {
+            Ok(state)
+        } else {
+            Err(ActorError::Store("Can't find state".to_string()))
+        }
+    }
+
     /// Start the child store and recover the state (if any).
     ///
     /// # Arguments
@@ -165,6 +203,9 @@ pub trait PersistentActor:
 
         if let StoreResponse::State(Some(state)) = response {
             self.update(state);
+        } else {
+            debug!("Create first snapshot");
+            store.tell(StoreCommand::Snapshot(self.clone())).await?;
         }
         Ok(())
     }
@@ -210,6 +251,8 @@ where
     states: Box<dyn Collection>,
     /// Key box that encrypts contents.
     key_box: Option<EncryptedMem>,
+    /// Inmutable actor (query result).
+    inmutable: bool,
     /// The phantom actor.
     _phantom_actor: PhantomData<P>,
 }
@@ -258,6 +301,7 @@ impl<P: PersistentActor> Store<P> {
             events: Box::new(events),
             states: Box::new(states),
             key_box,
+            inmutable: false,
             _phantom_actor: PhantomData,
         })
     }
@@ -277,6 +321,10 @@ impl<P: PersistentActor> Store<P> {
         E: Event + Serialize + DeserializeOwned,
     {
         debug!("Persisting event: {:?}", event);
+        if self.inmutable {
+            error!("Store is inmutable");
+            return Err(Error::Store("Store is inmutable".to_owned()));
+        }
         let bytes = if let Some(key_box) = &self.key_box {
             if let Ok(key) = key_box.decrypt() {
                 let bytes = bincode::serialize(&event).map_err(|e| {
@@ -346,6 +394,11 @@ impl<P: PersistentActor> Store<P> {
     /// An error if the operation failed.
     ///
     fn snapshot(&mut self, actor: &P) -> Result<(), Error> {
+        if self.inmutable {
+            error!("Store is inmutable");
+            return Err(Error::Store("Store is inmutable".to_owned()));
+        }
+        debug!("Snapshotting state: {:?}", actor);
         let data = bincode::serialize(actor).map_err(|e| {
             Error::Store(format!("Can't serialize state: {}", e))
         })?;
@@ -376,7 +429,7 @@ impl<P: PersistentActor> Store<P> {
                 if let Ok(key) = key_box.decrypt() {
                     self.decrypt(key.as_ref(), data.as_slice())?
                 } else {
-                    data
+                    return Err(Error::Store("Can't decrypt key".to_owned()));
                 }
             } else {
                 data
@@ -398,6 +451,50 @@ impl<P: PersistentActor> Store<P> {
         } else {
             Ok(None)
         }
+
+    }
+
+    /// Find a state.
+    pub fn find<F>(&mut self, filter: F) -> Result<Option<P>, Error>
+    where
+        F: Fn(&P) -> bool,
+    {
+        // Recover the first state.
+        if let Some((_, state)) = self.states.iter(false).next() {
+            let bytes = if let Some(key_box) = &self.key_box {
+                if let Ok(key) = key_box.decrypt() {
+                    self.decrypt(key.as_ref(), state.as_slice())?
+                } else {
+                    return Err(Error::Store("Can't decrypt key".to_owned()));
+                }
+            } else {
+                state
+            };
+            let mut state: P = bincode::deserialize(&bytes).map_err(|e| {
+                Error::Store(format!("Can't deserialize state: {}", e))
+            })?;
+            // Apply events to the state until you find the state that responds to the filter.
+            for (_, event) in self.events.iter(false) {
+                if filter(&state) {
+                    self.inmutable = true;
+                    return Ok(Some(state));
+                }
+                let bytes = if let Some(key_box) = &self.key_box {
+                    if let Ok(key) = key_box.decrypt() {
+                        self.decrypt(key.as_ref(), event.as_slice())?
+                    } else {
+                        return Err(Error::Store("Can't decrypt key".to_owned()));
+                    }
+                } else {
+                    event
+                };
+                let event: P::Event = bincode::deserialize(&bytes).map_err(|e| {
+                    Error::Store(format!("Can't deserialize event: {}", e))
+                })?;
+                state.apply(&event);
+            }
+        }
+        Ok(None)
     }
 
     /// Encrypt bytes.
@@ -429,10 +526,11 @@ impl<P: PersistentActor> Store<P> {
 }
 
 /// Store command.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum StoreCommand<P, E> {
     Persist(E),
     Snapshot(P),
+    Find(fn(&P) -> bool),
     Recover,
 }
 
@@ -517,6 +615,12 @@ where
                 }
                 Err(e) => Ok(StoreResponse::Error(e)),
             },
+            // Find a state.
+            StoreCommand::Find(filter) => {
+                let state = self.find(filter)
+                    .map_err(|_| ActorError::EntryNotFound)?;
+                Ok(StoreResponse::State(state))
+            }
         }
     }
 }
@@ -533,6 +637,7 @@ mod tests {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestActor {
+        pub version: usize,
         pub value: i32,
     }
 
@@ -542,6 +647,7 @@ mod tests {
         Recover,
         Snapshot,
         GetValue,
+        Find,
     }
 
     impl Message for TestMessage {}
@@ -608,6 +714,7 @@ mod tests {
     #[async_trait]
     impl PersistentActor for TestActor {
         fn apply(&mut self, event: &Self::Event) {
+            self.version += 1;
             self.value += event.0;
         }
     }
@@ -647,6 +754,19 @@ mod tests {
                     Ok(TestResponse::None)
                 }
                 TestMessage::GetValue => Ok(TestResponse::Value(self.value)),
+                TestMessage::Find => {
+                    let store: ActorRef<Store<Self>> =
+                        ctx.get_child("store").await.unwrap();
+                    let response = store
+                        .ask(StoreCommand::Find(|test| test.version == 1))
+                        .await
+                        .unwrap();
+                    if let StoreResponse::State(Some(state)) = response {
+                        Ok(TestResponse::Value(state.value))
+                    } else {
+                        Ok(TestResponse::None)
+                    }
+                }
             }
         }
 
@@ -677,7 +797,7 @@ mod tests {
         .unwrap();
         let store = system.create_root_actor("store", db).await.unwrap();
 
-        let mut actor = TestActor { value: 0 };
+        let mut actor = TestActor { version: 0, value: 0 };
         store
             .tell(StoreCommand::Persist(TestEvent(10)))
             .await
@@ -696,6 +816,14 @@ mod tests {
         if let StoreResponse::State(Some(state)) = response {
             assert_eq!(state.value, actor.value);
         }
+        let response = store.ask(StoreCommand::Find(|test| test.version == 1))
+            .await
+            .unwrap();
+        if let StoreResponse::State(Some(state)) = response {
+            assert_eq!(state.value, 10);
+        } else {
+            panic!("State not found");
+        }
     }
 
     #[tokio::test]
@@ -707,7 +835,7 @@ mod tests {
             runner.run().await;
         });
 
-        let actor = TestActor { value: 0 };
+        let actor = TestActor { version: 0, value: 0 };
 
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
 
@@ -754,4 +882,5 @@ mod tests {
         let decrypted = store.decrypt(&key, &encrypted).unwrap();
         assert_eq!(data, decrypted.as_slice());
     }
+
 }
