@@ -70,6 +70,11 @@ where
             }
         } else {
             debug!("Stopping actor.");
+            // TODO: Manage pre_stop error
+            if actor.pre_stop(ctx).await.is_err() {
+                error!("Failed to stop actor!");
+                let _ = ctx.emit_fail(Error::Stop).await;
+            }
             ctx.stop().await;
         }
     }
