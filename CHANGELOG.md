@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.2] - 2024-08-08
+
+### 🚀 Features
+
+- Add pre-start hook
+
+## [0.4.1] - 2024-08-06
+
+### 🚀 Features
+
+- Retry trait
+- Prefix to identify the actor instance
+- Stop childs
+- Find actor from a predicate
+- New errors
+
+### 🐛 Bug Fixes
+
+- Recover actor state
+- Flush db and collections
+- Flush db and collections
+- Default options in rocksdb
+- Persistent actor serialization
+- Stop root actor
+
+### 📚 Documentation
+
+- Start store parameters
+
 ## [0.3.2] - 2024-07-07
 
 ### 🚀 Features
