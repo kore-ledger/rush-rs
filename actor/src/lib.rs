@@ -25,6 +25,7 @@ mod handler;
 mod path;
 mod retries;
 mod runner;
+mod sink;
 mod supervision;
 mod system;
 
