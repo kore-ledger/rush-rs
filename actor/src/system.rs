@@ -8,8 +8,7 @@
 //!
 
 use crate::{
-    actor::ChildErrorSender, runner::{ActorRunner, ChildSender}, Actor, ActorPath, ActorRef,
-    Error, Handler,
+    actor::ChildErrorSender, runner::{ActorRunner, ChildSender}, sink::Sink, Actor, ActorPath, ActorRef, Error, Event, Handler
 };
 
 use tokio::sync::{mpsc, RwLock};
@@ -50,7 +49,7 @@ impl ActorSystem {
 /// System event.
 ///
 #[derive(Debug, Clone)]
-pub enum SystemEvent {
+pub enum InnerSystemEvent {
     /// Stop the actor system.
     StopSystem,
 }
@@ -70,7 +69,7 @@ pub struct SystemRef {
     senders: Arc<RwLock<Vec<ChildSender>>>,
 
     /// The event sender.
-    event_sender: mpsc::Sender<SystemEvent>,
+    event_sender: mpsc::Sender<InnerSystemEvent>,
 }
 
 impl SystemRef {
@@ -83,7 +82,7 @@ impl SystemRef {
             RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>,
         >,
         senders: Arc<RwLock<Vec<ChildSender>>>,
-        event_sender: mpsc::Sender<SystemEvent>,
+        event_sender: mpsc::Sender<InnerSystemEvent>,
     ) -> Self {
         SystemRef {
             actors,
@@ -254,7 +253,7 @@ impl SystemRef {
     }
 
     /// Send a system event.
-    pub async fn send_event(&self, event: SystemEvent) {
+    pub async fn send_event(&self, event: InnerSystemEvent) {
         if let Err(error) = self.event_sender.send(event).await {
             error!("Failed to send event! {}", error.to_string());
         }
@@ -293,6 +292,18 @@ impl SystemRef {
             None => None,
         }
     }
+
+    /// Run a sink. The sink will be run in a separate task.
+    /// 
+    pub async fn run_sink<E>(&self, mut sink: Sink<E>)
+    where
+        E: Event,
+    {
+        tokio::spawn(async move {
+            sink.run().await;
+        });
+    }
+
 }
 
 /// System runner.
@@ -301,14 +312,14 @@ pub struct SystemRunner {
     token: CancellationToken,
 
     /// The event receiver.
-    event_receiver: mpsc::Receiver<SystemEvent>,
+    event_receiver: mpsc::Receiver<InnerSystemEvent>,
 }
 
 impl SystemRunner {
     /// Create a new system runner.
     pub(crate) fn new(
         token: CancellationToken,
-        event_receiver: mpsc::Receiver<SystemEvent>,
+        event_receiver: mpsc::Receiver<InnerSystemEvent>,
     ) -> Self {
         Self {
             token,
@@ -323,7 +334,7 @@ impl SystemRunner {
             tokio::select! {
                 Some(event) = self.event_receiver.recv() => {
                     match event {
-                      SystemEvent::StopSystem => {
+                      InnerSystemEvent::StopSystem => {
                             debug!("Stopping actor system...");
                             self.token.cancel();
                         }
@@ -355,7 +366,7 @@ mod tests {
         });
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         assert!(logs_contain("Running actor system..."));
-        system.send_event(SystemEvent::StopSystem).await;
+        system.send_event(InnerSystemEvent::StopSystem).await;
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         assert!(logs_contain("Stopping actor system..."));
         assert!(logs_contain("Actor system stopped."));

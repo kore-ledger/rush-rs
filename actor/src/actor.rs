@@ -844,6 +844,8 @@ mod test {
 
     use super::*;
 
+    use crate::sink::{Sink, Subscriber};
+
     use serde::{Deserialize, Serialize};
     use tokio::sync::{mpsc, RwLock};
 
@@ -892,6 +894,15 @@ mod test {
         }
     }
 
+    pub struct TestSubscriber;
+
+    impl Subscriber<TestEvent> for TestSubscriber {
+        fn notify(&self, event: TestEvent) {
+            debug!("Received event: {:?}", event);
+            assert!(event.0 > 0);
+        }
+    }
+
     #[tokio::test]
     #[traced_test]
     async fn test_actor() {
@@ -902,6 +913,10 @@ mod test {
         let system = SystemRef::new(actors, helpers, senders, event_sender);
         let actor = TestActor { counter: 0 };
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
+
+        let sink = Sink::new(actor_ref.subscribe(), TestSubscriber);
+        system.run_sink(sink).await;
+
         actor_ref.tell(TestMessage(10)).await.unwrap();
         let mut recv = actor_ref.subscribe();
         let response = actor_ref.ask(TestMessage(10)).await.unwrap();
