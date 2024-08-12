@@ -8,7 +8,7 @@
 //!
 
 use crate::{
-    actor::ChildErrorSender, runner::{ActorRunner, ChildSender}, Actor, ActorPath, ActorRef, Error, Handler
+    actor::ChildErrorSender, runner::{ActorRunner, ChildSender}, sink::Sink, Actor, ActorPath, ActorRef, Error, Event, Handler
 };
 
 use tokio::sync::{mpsc, RwLock};
@@ -291,6 +291,17 @@ impl SystemRef {
             Some(helper) => Some(helper.clone()),
             None => None,
         }
+    }
+
+    /// Run a sink. The sink will be run in a separate task.
+    /// 
+    pub async fn run_sink<E>(&self, mut sink: Sink<E>)
+    where
+        E: Event,
+    {
+        tokio::spawn(async move {
+            sink.run().await;
+        });
     }
 
 }

@@ -24,7 +24,7 @@ impl<E: Event> Sink<E> {
         loop {
             match self.event_receiver.recv().await {
                 Ok(event) => {   
-                    debug!("Received event: {:?}. Notify to the subscribers.", event);         
+                    debug!("Received event: {:?}. Notify to the subscriber.", event);         
                     self.subscriber.notify(event);
                 },
                 Err(error) => {
