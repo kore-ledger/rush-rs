@@ -8,12 +8,13 @@
 
 use crate::{
     supervision::{RetryStrategy, Strategy},
-    Actor, ActorContext, ActorPath, ActorRef, Error, Handler,
+    Actor, ActorRef, ActorContext, Error, Handler,
 };
 
 use async_trait::async_trait;
-use std::fmt::Debug;
+
 use tracing::{debug, error};
+use std::fmt::Debug;
 
 /// Retry trait.
 #[async_trait]
@@ -26,47 +27,61 @@ pub trait Retry: Actor + Handler<Self> + Debug + Clone {
         ctx: &mut ActorContext<Self>,
     ) -> Result<ActorRef<Self::Child>, Error>;
 
+    /// Retry strategy.
+    fn retry_strategy(&self) -> Strategy;
+
+    /// Apply response.
+    async fn apply_response(
+        &mut self,
+        response: <<Self as Retry>::Child as Actor>::Response,
+        ctx: &mut ActorContext<Self>,
+    );
+
     /// Retry message.
     async fn apply_retries(
-        &self,
+        &mut self,
         ctx: &mut ActorContext<Self>,
-        path: ActorPath,
-        retry_strategy: &mut Strategy,
         message: <<Self as Retry>::Child as Actor>::Message,
-    ) -> Result<<<Self as Retry>::Child as Actor>::Response, Error> {
+    ) {
         if let Ok(child) = self.child(ctx).await {
+            let mut strategy = self.retry_strategy();
+
             let mut retries = 0;
-            while retries < retry_strategy.max_retries() {
-                debug!(
-                    "Retry {}/{}.",
-                    retries + 1,
-                    retry_strategy.max_retries()
-                );
+
+            while retries < strategy.max_retries() {
+                debug!("Retry {}/{}.", retries + 1, strategy.max_retries());
                 if let Ok(response) = child.ask(message.clone()).await {
                     debug!("Response from retry");
-                    return Ok(response);
+                    self.apply_response(response, ctx).await;
+                    return;
                 } else {
-                    if let Some(duration) = retry_strategy.next_backoff() {
+                    if let Some(duration) = strategy.next_backoff() {
                         debug!("Backoff for {:?}", &duration);
                         tokio::time::sleep(duration).await;
                     }
                     retries += 1;
                 }
             }
-            error!("Max retries with actor {} reached.", path);
-            Err(Error::Functional(format!(
-                "Max retries with actor {} reached.",
-                path
-            )))
+            let path = child.path();
+            error!("Max retries reached with actor {}.", path);
+            let _ = ctx
+                .emit_error(Error::Functional(format!(
+                    "Max retries reached with actor {}.",
+                    path
+                )))
+                .await;
         } else {
-            error!("Retries with actor {} failed. Unknown actor.", path);
-            Err(Error::Functional(format!(
-                "Retries with actor {} failed. Unknown actor.",
-                path
-            )))
+            error!("Retries with actor. Unknown actor.");
+            let _ = ctx
+                .emit_error(Error::Functional(
+                    "Retries with actor {} failed. Unknown actor.".to_owned(),
+                
+                ))
+                .await;
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -88,12 +103,17 @@ mod tests {
     }
 
     #[derive(Debug, Clone)]
-    struct ParentCommand;
+    enum ParentCommand {
+        Retry,
+        Size(usize),
+    }
 
     impl Message for ParentCommand {}
 
     #[derive(Debug, Clone)]
-    struct ParentResponse(usize);
+ enum ParentResponse {
+    None,
+ }
 
     impl Response for ParentResponse {}
 
@@ -112,19 +132,26 @@ mod tests {
     impl Handler<ParentActor> for ParentActor {
         async fn handle_message(
             &mut self,
-            _message: ParentCommand,
+            message: ParentCommand,
             ctx: &mut ActorContext<ParentActor>,
         ) -> Result<ParentResponse, Error> {
-            //let name = message.0;
-            let mut strategy = Strategy::FixedInterval(
-                FixedIntervalStrategy::new(3, Duration::from_secs(1)),
-            );
-            let path = ctx.path().clone() / &self.child;
-            let response = self
-                .apply_retries(ctx, path, &mut strategy, ChildCommand)
-                .await
-                .unwrap();
-            Ok(ParentResponse(response.0))
+            match message {
+                ParentCommand::Retry => {
+                    ctx.message(message).await.unwrap();
+                }
+                ParentCommand::Size(size) => {
+                    assert_eq!(size, 2);
+                }
+            }
+            Ok(ParentResponse::None)
+        }
+
+        async fn on_message(
+            &mut self,
+            _message: ParentCommand,
+            ctx: &mut ActorContext<ParentActor>,
+        ) {
+            self.apply_retries(ctx, ChildCommand).await;
         }
     }
 
@@ -180,6 +207,19 @@ mod tests {
             ctx.create_child(&self.child, ChildActor { counter: 0 })
                 .await
         }
+
+        fn retry_strategy(&self) -> Strategy {
+            Strategy::FixedInterval(FixedIntervalStrategy::new(3, Duration::from_secs(1)))
+        }
+
+        async fn apply_response(
+            &mut self,
+            response: ChildResponse,
+            ctx: &mut ActorContext<ParentActor>,
+        ) {
+            assert_eq!(response.0, 2);
+            self.handle_message(ParentCommand::Size(response.0), ctx).await.unwrap();
+        }
     }
 
     #[tokio::test]
@@ -200,7 +240,7 @@ mod tests {
             .await
             .unwrap();
 
-        let response = actor.ask(ParentCommand).await.unwrap();
-        assert_eq!(response.0, 2);
+        actor.tell(ParentCommand::Retry).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(3)).await;
     }
 }

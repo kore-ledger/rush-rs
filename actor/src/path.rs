@@ -204,10 +204,10 @@ impl std::ops::Div<&str> for ActorPath {
     fn div(self, rhs: &str) -> Self::Output {
         let mut keys = self.0;
         let mut tokens: Vec<String> = rhs
-        .split('/')
-        .filter(|x| !x.trim().is_empty())
-        .map(|s| s.to_string())
-        .collect();
+            .split('/')
+            .filter(|x| !x.trim().is_empty())
+            .map(|s| s.to_string())
+            .collect();
 
         keys.append(&mut tokens);
         ActorPath(keys)

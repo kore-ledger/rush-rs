@@ -3,9 +3,9 @@
 
 use crate::Event;
 
-use tokio::sync::broadcast::{Receiver as EventReceiver, error::RecvError};
+use tokio::sync::broadcast::{error::RecvError, Receiver as EventReceiver};
 
-use tracing::{error, debug};
+use tracing::{debug, error};
 
 pub struct Sink<E: Event> {
     subscriber: Box<dyn Subscriber<E>>,
@@ -13,7 +13,10 @@ pub struct Sink<E: Event> {
 }
 
 impl<E: Event> Sink<E> {
-    pub fn new(event_receiver: EventReceiver<E>, subscriber: impl Subscriber<E>) -> Self {
+    pub fn new(
+        event_receiver: EventReceiver<E>,
+        subscriber: impl Subscriber<E>,
+    ) -> Self {
         Sink {
             subscriber: Box::new(subscriber),
             event_receiver,
@@ -23,10 +26,13 @@ impl<E: Event> Sink<E> {
     pub async fn run(&mut self) {
         loop {
             match self.event_receiver.recv().await {
-                Ok(event) => {   
-                    debug!("Received event: {:?}. Notify to the subscriber.", event);         
+                Ok(event) => {
+                    debug!(
+                        "Received event: {:?}. Notify to the subscriber.",
+                        event
+                    );
                     self.subscriber.notify(event);
-                },
+                }
                 Err(error) => {
                     error!("Error receiving event: {:?}", error);
                     match error {
@@ -35,7 +41,7 @@ impl<E: Event> Sink<E> {
                             // If the receiver is lagging, we should try to catch up
                             // by processing the events that are still in the channel.
                             continue;
-                        },
+                        }
                     }
                 }
             }
@@ -43,6 +49,6 @@ impl<E: Event> Sink<E> {
     }
 }
 
-pub trait Subscriber<E: Event>: Send + Sync + 'static{
+pub trait Subscriber<E: Event>: Send + Sync + 'static {
     fn notify(&self, event: E);
 }

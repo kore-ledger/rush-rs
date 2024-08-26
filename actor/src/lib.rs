@@ -39,6 +39,6 @@ pub use path::ActorPath;
 pub use retries::Retry;
 pub use supervision::{
     ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
-    RetryStrategy, SupervisionStrategy, Strategy
+    RetryStrategy, Strategy, SupervisionStrategy,
 };
 pub use system::{ActorSystem, SystemRef, SystemRunner};

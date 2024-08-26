@@ -499,19 +499,19 @@ pub trait Actor: Send + Sync + Sized + 'static {
     /// Called before stopping the actor.
     /// Override this method to define what should happen before the actor is stopped.
     /// By default it does nothing.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `context` - The context of the actor.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Returns a void result.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the actor could not be stopped.
-    /// 
+    ///
     async fn pre_stop(
         &mut self,
         _ctx: &mut ActorContext<Self>,
@@ -549,7 +549,7 @@ pub trait Event:
 pub trait Message: Clone + Send + Sync + 'static {}
 
 /// Defines the response of a message.
-pub trait Response: Clone + Send + Sync + 'static {}
+pub trait Response: Send + Sync + 'static {}
 
 /// This is the trait that allows an actor to handle the messages that they receive and,
 /// if necessary, respond to them.
