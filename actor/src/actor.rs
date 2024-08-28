@@ -99,6 +99,16 @@ where
         actor.pre_restart(self, error).await
     }
 
+    /// Returns the actor reference.
+    ///
+    /// # Returns
+    ///
+    /// Returns the actor reference. `None` if the actor is removed.
+    ///
+    pub async fn reference(&self) -> Option<ActorRef<A>> {
+        self.system.get_actor(&self.path).await
+    }
+
     /// Returns the path of the actor.
     ///
     /// # Returns
@@ -117,6 +127,16 @@ where
     ///
     pub fn system(&self) -> &SystemRef {
         &self.system
+    }
+
+    /// Returns the actor parent or None if the actor is root actor.
+    ///
+    /// # Returns
+    ///
+    /// Returns the actor parent or None if the actor is root actor.
+    ///
+    pub async fn parent<P: Actor + Handler<P>>(&self) -> Option<ActorRef<P>> {
+        self.system.get_actor(&self.path().parent()).await
     }
 
     /// Emits an event to subscribers.
@@ -554,11 +574,12 @@ pub trait Response: Send + Sync + 'static {}
 /// This is the trait that allows an actor to handle the messages that they receive and,
 /// if necessary, respond to them.
 #[async_trait]
-pub trait Handler<A: Actor>: Send + Sync {
+pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// Handles a message.
     ///
     /// # Arguments
     ///
+    /// * `sender` - The `ActorPath` of the sender of the message.
     /// * `msg` - The message to handle.
     /// * `ctx` - The actor context.
     ///
@@ -571,6 +592,7 @@ pub trait Handler<A: Actor>: Send + Sync {
     /// Returns an error if the message could not be handled.
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: A::Message,
         ctx: &mut ActorContext<A>,
     ) -> Result<A::Response, Error>;
@@ -715,7 +737,7 @@ where
     /// Returns a () if success.
     ///
     pub async fn tell(&self, message: A::Message) -> Result<(), Error> {
-        self.sender.tell(message).await
+        self.sender.tell(self.path(), message).await
     }
 
     /// Asks a message to the actor.
@@ -733,7 +755,7 @@ where
     /// Returns an error if the message could not be sent.
     ///
     pub async fn ask(&self, message: A::Message) -> Result<A::Response, Error> {
-        self.sender.ask(message).await
+        self.sender.ask(self.path(), message).await
     }
 
     /// Stops the actor.
@@ -741,7 +763,7 @@ where
     /// The actor will not be able to receive any more messages.
     ///
     pub async fn stop(&self) {
-        self.sender.stop().await;
+        self.sender.stop(self.path()).await;
     }
 
     /// Returns the path of the actor.
@@ -823,6 +845,7 @@ impl Actor for DummyActor {
 impl Handler<DummyActor> for DummyActor {
     async fn handle_message(
         &mut self,
+        _sender: ActorPath,
         _message: DummyMessage,
         _ctx: &mut ActorContext<DummyActor>,
     ) -> Result<DummyResponse, Error> {
@@ -884,6 +907,7 @@ mod test {
     impl Handler<TestActor> for TestActor {
         async fn handle_message(
             &mut self,
+            _sender: ActorPath,
             msg: TestMessage,
             ctx: &mut ActorContext<TestActor>,
         ) -> Result<TestResponse, Error> {

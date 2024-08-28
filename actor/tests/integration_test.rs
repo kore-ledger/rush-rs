@@ -67,6 +67,7 @@ impl Actor for TestActor {
 impl Handler<TestActor> for TestActor {
     async fn handle_message(
         &mut self,
+        _sender: ActorPath,
         message: TestCommand,
         ctx: &mut ActorContext<TestActor>,
     ) -> Result<TestResponse, Error> {
@@ -162,6 +163,7 @@ impl Actor for ChildActor {
 impl Handler<ChildActor> for ChildActor {
     async fn handle_message(
         &mut self,
+        _sender: ActorPath,
         message: ChildCommand,
         ctx: &mut ActorContext<ChildActor>,
     ) -> Result<ChildResponse, Error> {

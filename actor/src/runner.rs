@@ -485,6 +485,7 @@ mod tests {
     impl Handler<TestActor> for TestActor {
         async fn handle_message(
             &mut self,
+            _sender: ActorPath,
             msg: TestMessage,
             ctx: &mut ActorContext<Self>,
         ) -> Result<TestResponse, Error> {

@@ -17,7 +17,8 @@ use crate::{
 };
 
 use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 
 use async_trait::async_trait;
@@ -344,6 +345,72 @@ impl<P: PersistentActor> Store<P> {
         self.events.put(&self.event_counter.to_string(), &bytes)
     }
 
+    /// Persist an event and the state.
+    /// This method is used to persist an event and the state of the actor in a single operation.
+    /// This applies in scenarios where we want to keep only the last event and state.
+    /// 
+    /// # Arguments
+    /// 
+    /// - event: The event to persist.
+    /// - state: The state of the actor (without applying the event).
+    /// 
+    /// # Returns
+    /// 
+    /// An error if the operation failed.
+    /// 
+    fn persist_state<E>(&mut self, event: &E, state: &P) -> Result<(), Error>
+    where
+        E: Event + Serialize + DeserializeOwned,
+    {
+        debug!("Persisting event: {:?}", event);
+        if self.inmutable {
+            error!("Store is inmutable");
+            return Err(Error::Store("Store is inmutable".to_owned()));
+        }
+        let bytes = bincode::serialize(&event).map_err(|e| {
+            error!("Can't serialize event: {}", e);
+            Error::Store(format!("Can't serialize event: {}", e))
+        })?;
+        if self.event_counter > 0 {
+            self.event_counter = 0;
+        }
+        self.snapshot(state)?;
+        self.event_counter += 1;
+        self.events.put(&self.event_counter.to_string(), &bytes)
+    }
+
+    /// Returns the last event.
+    ///
+    /// # Returns
+    /// 
+    /// The last event.
+    /// 
+    /// An error if the operation failed.
+    /// 
+    fn last_event(&self) -> Result<Option<P::Event>, Error> {
+        if let Some((_, data)) = self.events.last() {
+            let event: P::Event = if let Some(key_box) = &self.key_box {
+                if let Ok(key) = key_box.decrypt() {
+                    let data = self.decrypt(key.as_ref(), data.as_slice())?;
+                    bincode::deserialize(&data).map_err(|e| {
+                        error!("Can't deserialize event: {}", e);
+                        Error::Store(format!("Can't deserialize event: {}", e))
+                    })?
+                } else {
+                    return Err(Error::Store("Can't decrypt key".to_owned()));
+                }
+            } else {
+                bincode::deserialize(data.as_slice()).map_err(|e| {
+                    error!("Can't deserialize event: {}", e);
+                    Error::Store(format!("Can't deserialize event: {}", e))
+                })?
+            };
+            Ok(Some(event))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Retrieve events.
     fn events(
         &mut self,
@@ -531,8 +598,10 @@ impl<P: PersistentActor> Store<P> {
 #[derive(Debug, Clone)]
 pub enum StoreCommand<P, E> {
     Persist(E),
+    PersistLight(E, P),
     Snapshot(P),
     Find(fn(&P) -> bool),
+    LastEvent,
     Recover,
 }
 
@@ -554,6 +623,7 @@ where
     Persisted,
     Snapshotted,
     State(Option<P>),
+    LastEvent(Option<P::Event>),
     Error(Error),
 }
 
@@ -587,6 +657,7 @@ where
 {
     async fn handle_message(
         &mut self,
+        _sender: ActorPath,
         msg: StoreCommand<P, P::Event>,
         _ctx: &mut ActorContext<Store<P>>,
     ) -> Result<StoreResponse<P>, ActorError> {
@@ -601,6 +672,16 @@ where
                 }
                 Err(e) => Ok(StoreResponse::Error(e)),
             },
+            // Light persistence of an event.
+            StoreCommand::PersistLight(event, actor) => {
+                match self.persist_state(&event, &actor) {
+                    Ok(_) => {
+                        debug!("Light persistence of event: {:?}", event);
+                        Ok(StoreResponse::Persisted)
+                    }
+                    Err(e) => Ok(StoreResponse::Error(e)),
+                }
+            }
             // Snapshot the state.
             StoreCommand::Snapshot(actor) => match self.snapshot(&actor) {
                 Ok(_) => {
@@ -622,7 +703,15 @@ where
                 let state =
                     self.find(filter).map_err(|_| ActorError::EntryNotFound)?;
                 Ok(StoreResponse::State(state))
-            }
+            },
+            // Get the last event.
+            StoreCommand::LastEvent => match self.last_event() {
+                Ok(event) => {
+                    debug!("Last event: {:?}", event);
+                    Ok(StoreResponse::LastEvent(event))
+                }
+                Err(e) => Ok(StoreResponse::Error(e)),
+            },
         }
     }
 }
@@ -725,6 +814,7 @@ mod tests {
     impl Handler<TestActor> for TestActor {
         async fn handle_message(
             &mut self,
+            _sender: ActorPath,
             msg: TestMessage,
             ctx: &mut ActorContext<TestActor>,
         ) -> Result<TestResponse, ActorError> {
@@ -829,6 +919,12 @@ mod tests {
             assert_eq!(state.value, 10);
         } else {
             panic!("State not found");
+        }
+        let response = store.ask(StoreCommand::LastEvent).await.unwrap();
+        if let StoreResponse::LastEvent(Some(event)) = response {
+            assert_eq!(event.0, 10);
+        } else {
+            panic!("Event not found");
         }
     }
 

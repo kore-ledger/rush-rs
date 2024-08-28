@@ -36,7 +36,7 @@ pub use actor::{
 pub use error::Error;
 pub use path::ActorPath;
 
-pub use retries::Retry;
+pub use retries::RetryActor;
 pub use supervision::{
     ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
     RetryStrategy, Strategy, SupervisionStrategy,
