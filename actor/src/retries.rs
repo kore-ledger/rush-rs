@@ -109,21 +109,20 @@ where
                 self.retries,
                 self.retry_strategy.max_retries()
             );
-            if let Some(duration) = self.retry_strategy.next_backoff() {
-                debug!("Backoff for {:?}", &duration);
-                tokio::time::sleep(duration).await;
-            }
+
             // Send retry to parent.
             if let Some(child) = ctx.get_child::<T>("target").await {
                 if child.tell(self.message.clone()).await.is_err() {
                     error!("Cannot initiate retry to send message");
-                    /*let _ = ctx
-                        .emit_error(Error::Send(
-                            "Cannot initiate retry to send message".to_owned(),
-                        ))
-                        .await;*/
                 }
             }
+
+            // Backoff
+            if let Some(duration) = self.retry_strategy.next_backoff() {
+                debug!("Backoff for {:?}", &duration);
+                tokio::time::sleep(duration).await;
+            }
+
             // Next retry
             if ctx.message(RetryMessage::Retry).await.is_err() {
                 error!("Cannot initiate retry to send message");
