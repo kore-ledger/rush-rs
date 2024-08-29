@@ -7,8 +7,7 @@
 //!
 
 use crate::{
-    supervision::{RetryStrategy, Strategy},
-    Actor, ActorContext, ActorPath, Error, Event, Handler, Message, Response,
+    supervision::{RetryStrategy, Strategy}, Actor, ActorContext, ActorPath, ActorRef, Error, Event, Handler, Message, Response
 };
 
 use async_trait::async_trait;
@@ -25,6 +24,7 @@ where
     message: T::Message,
     retry_strategy: Strategy,
     retries: usize,
+    is_end: bool
 }
 
 impl<T> RetryActor<T>
@@ -42,6 +42,7 @@ where
             message,
             retry_strategy,
             retries: 0,
+            is_end: false
         }
     }
 }
@@ -88,58 +89,67 @@ where
         ctx: &mut ActorContext<RetryActor<T>>,
     ) -> Result<(), Error> {
         match message {
-            RetryMessage::Retry => ctx.message(message).await?,
+            RetryMessage::Retry => {
+                if !self.is_end {
+                    self.retries += 1;
+                    if self.retries <= self.retry_strategy.max_retries() {
+                        debug!(
+                            "Retry {}/{}.",
+                            self.retries,
+                            self.retry_strategy.max_retries()
+                        );
+            
+                        // Send retry to parent.
+                        if let Some(child) = ctx.get_child::<T>("target").await {
+                            if child.tell(self.message.clone()).await.is_err() {
+                                error!("Cannot initiate retry to send message");
+                            }
+                        }
+            
+                        // Backoff
+                        if let Some(duration) = self.retry_strategy.next_backoff() {
+                            debug!("Backoff for {:?}", &duration);
+                            tokio::time::sleep(duration).await;
+                        }
+            
+                        if let Some(actor) = ctx.system().get_actor(ctx.path()).await {
+                            let actor: ActorRef<RetryActor<T>> = actor;
+                            if actor.tell(RetryMessage::Retry).await.is_err() {
+                                error!("Cannot initiate retry to send message");
+                                let _ = ctx
+                                    .emit_error(Error::Send(
+                                        "Cannot initiate retry to send message".to_owned(),
+                                    ))
+                                    .await;
+                            }
+                        } else {
+                            let _ = ctx
+                                .emit_error(Error::Send(
+                                    "Cannot get retry actor in".to_owned(),
+                                ))
+                                .await;
+                        };
+                        // Next retry
+            
+                    } else {
+                        error!("Max retries reached.");
+                        let _ = ctx
+                            .emit_error(Error::Functional(
+                                "Max retries reached.".to_owned(),
+                            ))
+                            .await;
+                        debug!("RetryActor end");
+                        ctx.stop().await;
+                    }
+                }
+            },
             RetryMessage::End => {
+                self.is_end = true;
                 debug!("RetryActor end");
                 ctx.stop().await;
             }
         }
         Ok(())
-    }
-
-    async fn on_message(
-        &mut self,
-        _message: RetryMessage,
-        ctx: &mut ActorContext<RetryActor<T>>,
-    ) {
-        self.retries += 1;
-        if self.retries < self.retry_strategy.max_retries() {
-            debug!(
-                "Retry {}/{}.",
-                self.retries,
-                self.retry_strategy.max_retries()
-            );
-
-            // Send retry to parent.
-            if let Some(child) = ctx.get_child::<T>("target").await {
-                if child.tell(self.message.clone()).await.is_err() {
-                    error!("Cannot initiate retry to send message");
-                }
-            }
-
-            // Backoff
-            if let Some(duration) = self.retry_strategy.next_backoff() {
-                debug!("Backoff for {:?}", &duration);
-                tokio::time::sleep(duration).await;
-            }
-
-            // Next retry
-            if ctx.message(RetryMessage::Retry).await.is_err() {
-                error!("Cannot initiate retry to send message");
-                let _ = ctx
-                    .emit_error(Error::Send(
-                        "Cannot initiate retry to send message".to_owned(),
-                    ))
-                    .await;
-            }
-        } else {
-            error!("Max retries reached.");
-            let _ = ctx
-                .emit_error(Error::Functional(
-                    "Max retries reached.".to_owned(),
-                ))
-                .await;
-        }
     }
 }
 
