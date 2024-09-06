@@ -27,7 +27,10 @@ where
 
     /// Stop manager.
     ///
-
+    /// # Returns
+    /// 
+    /// An error if the operation failed.
+    /// 
     fn stop(self) -> Result<(), Error> {
         Ok(())
     }
@@ -105,6 +108,14 @@ pub trait Collection: Sync + Send + 'static {
         debug!("Last value: {:?}", value);
         value
     }
+
+    /// Removes all values from the collection.
+    /// 
+    /// # Returns
+    /// 
+    /// An error if the operation failed.
+    /// 
+    fn purge(&mut self) -> Result<(), Error>;
 
     /// Returns an iterator over the key-value pairs in the collection.
     ///
@@ -319,6 +330,24 @@ macro_rules! test_store_trait {
                     result,
                     vec![b"value2".to_vec(), b"value1".to_vec()]
                 );
+                assert!(manager.stop().is_ok())
+            }
+
+            #[test]
+            fn test_purge() {
+                let manager = <$type>::default();
+                let mut store: $type2 =
+                    manager.create_collection("test", "test").unwrap();
+                store.put("key1", b"value1").unwrap();
+                store.put("key2", b"value2").unwrap();
+                store.put("key3", b"value3").unwrap();
+                assert_eq!(store.get("key1"), Ok(b"value1".to_vec()));
+                assert_eq!(store.get("key2"), Ok(b"value2".to_vec()));
+                assert_eq!(store.get("key3"), Ok(b"value3".to_vec()));
+                store.purge().unwrap();
+                assert_eq!(store.get("key1"), Err(Error::EntryNotFound));
+                assert_eq!(store.get("key2"), Err(Error::EntryNotFound));
+                assert_eq!(store.get("key3"), Err(Error::EntryNotFound));
                 assert!(manager.stop().is_ok())
             }
         }

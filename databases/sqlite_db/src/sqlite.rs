@@ -148,6 +148,17 @@ impl Collection for SqliteCollection {
         Ok(())
     }
 
+    fn purge(&mut self) -> Result<(), Error> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| Error::Store("SQLITE open connection".to_owned()))?;
+        let stmt = format!("DELETE FROM {} WHERE prefix = ?1", &self.table);
+        conn.execute(&stmt, params![self.prefix])
+            .map_err(|_| Error::Store("SQLITE purge error".to_owned()))?;
+        Ok(())
+    }
+
     fn iter<'a>(
         &'a self,
         reverse: bool,

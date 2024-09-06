@@ -520,6 +520,18 @@ impl<P: PersistentActor> Store<P> {
         }
     }
 
+    /// Purge the store.
+    /// 
+    /// # Returns
+    /// 
+    /// An error if the operation failed.
+    /// 
+    pub fn purge(&mut self) -> Result<(), Error> {
+        self.events.purge()?;
+        self.states.purge()?;
+        Ok(())
+    }
+
     /// Find a state.
     pub fn find<F>(&mut self, filter: F) -> Result<Option<P>, Error>
     where
@@ -603,6 +615,7 @@ pub enum StoreCommand<P, E> {
     Find(fn(&P) -> bool),
     LastEvent,
     Recover,
+    Purge,
 }
 
 /// Implements `Message` for store command.
@@ -709,6 +722,14 @@ where
                 Ok(event) => {
                     debug!("Last event: {:?}", event);
                     Ok(StoreResponse::LastEvent(event))
+                }
+                Err(e) => Ok(StoreResponse::Error(e)),
+            },
+            // Purge the store.
+            StoreCommand::Purge => match self.purge() {
+                Ok(_) => {
+                    debug!("Purged store");
+                    Ok(StoreResponse::None)
                 }
                 Err(e) => Ok(StoreResponse::Error(e)),
             },

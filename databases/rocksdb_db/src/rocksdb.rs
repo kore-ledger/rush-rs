@@ -152,6 +152,31 @@ impl Collection for RocksDbStore {
         }
     }
 
+    fn purge(&mut self) -> Result<(), Error> {
+        let db = self
+            .store
+            .read()
+            .map_err(|e| Error::Get(format!("{:?}", e)))?;
+        if let Some(handle) = db.cf_handle(&self.name) {
+            let iter = db.iterator_cf(handle, IteratorMode::Start);
+            for result in iter {
+                if let Ok((key, _)) = result {
+                   let key = String::from_utf8(key.to_vec())
+                        .map_err(|_| Error::Store("Can not convert key to string.".to_owned()))?;
+                    if key.starts_with(&self.prefix) {
+                        db.delete_cf(handle, key)
+                            .map_err(|e| Error::Get(format!("{:?}", e)))?;
+                    }
+                }
+            }
+            Ok(())
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
+
     fn iter<'a>(
         &'a self,
         reverse: bool,
