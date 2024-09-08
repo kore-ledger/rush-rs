@@ -614,6 +614,8 @@ pub enum StoreCommand<P, E> {
     Snapshot(P),
     Find(fn(&P) -> bool),
     LastEvent,
+    LastEventNumber,
+    LastEventsFrom(usize),
     Recover,
     Purge,
 }
@@ -637,6 +639,8 @@ where
     Snapshotted,
     State(Option<P>),
     LastEvent(Option<P::Event>),
+    LastEventNumber(usize),
+    LastEvents(Vec<P::Event>),
     Error(Error),
 }
 
@@ -733,6 +737,16 @@ where
                 }
                 Err(e) => Ok(StoreResponse::Error(e)),
             },
+            // Get the last event number.
+            StoreCommand::LastEventNumber => {
+                Ok(StoreResponse::LastEventNumber(self.event_counter))
+            }
+            // Get the last events from a number of counter.
+            StoreCommand::LastEventsFrom(from) => {
+                let events = self.events(from, self.event_counter)
+                    .map_err(|_| ActorError::Store("Unable to get the latest events".to_owned()))?;
+                Ok(StoreResponse::LastEvents(events))
+            }
         }
     }
 }
@@ -946,6 +960,22 @@ mod tests {
             assert_eq!(event.0, 10);
         } else {
             panic!("Event not found");
+        }
+        let response = store.ask(StoreCommand::LastEventNumber).await.unwrap();
+        if let StoreResponse::LastEventNumber(number) = response {
+            assert_eq!(number, 2);
+        } else {
+            panic!("Event number not found");
+        }
+        let response = store
+            .ask(StoreCommand::LastEventsFrom(1))
+            .await
+            .unwrap();
+        if let StoreResponse::LastEvents(events) = response {
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].0, 10);
+        } else {
+            panic!("Events not found");
         }
     }
 
