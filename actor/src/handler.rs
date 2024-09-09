@@ -70,7 +70,7 @@ where
             if let Some(rsvp) = self.rsvp.take() {
                 debug!("Sending back response (if any).");
                 rsvp.send(result).unwrap_or_else(|_failed| {
-                    error!("Failed to send back response!");
+                    error!("Failed to send back response!"); // GCOV-LINE
                 })
             }
         } else {
@@ -159,7 +159,7 @@ where
         debug!("Stopping actor from handle reference.");
         let msg: ActorMessage<A> = ActorMessage::new(None, sender, None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
-            error!("Failed to stop actor! {}", error.to_string());
+            error!("Failed to stop actor! {}", error.to_string()); // GCOV-LINE
         }
     }
 
