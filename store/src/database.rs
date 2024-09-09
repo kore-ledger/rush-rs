@@ -28,9 +28,9 @@ where
     /// Stop manager.
     ///
     /// # Returns
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
+    ///
     fn stop(self) -> Result<(), Error> {
         Ok(())
     }
@@ -110,11 +110,11 @@ pub trait Collection: Sync + Send + 'static {
     }
 
     /// Removes all values from the collection.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
+    ///
     fn purge(&mut self) -> Result<(), Error>;
 
     /// Returns an iterator over the key-value pairs in the collection.

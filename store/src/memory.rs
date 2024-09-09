@@ -64,7 +64,9 @@ impl Collection for MemoryStore {
     }
 
     fn purge(&mut self) -> Result<(), Error> {
-        let keys_to_remove: Vec<String> = self.data.keys()
+        let keys_to_remove: Vec<String> = self
+            .data
+            .keys()
             .filter(|key| key.starts_with(&self.prefix))
             .cloned()
             .collect();

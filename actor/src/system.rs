@@ -290,10 +290,10 @@ impl SystemRef {
         H: Any + Send + Sync + Clone + 'static,
     {
         let helpers = self.helpers.read().await;
-        match helpers.get(name).and_then(|any| any.downcast_ref::<H>()) {
-            Some(helper) => Some(helper.clone()),
-            None => None,
-        }
+        helpers
+            .get(name)
+            .and_then(|any| any.downcast_ref::<H>())
+            .cloned()
     }
 
     /// Run a sink. The sink will be run in a separate task.

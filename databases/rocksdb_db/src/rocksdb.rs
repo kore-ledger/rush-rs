@@ -11,7 +11,7 @@ use store::{
 
 use rocksdb::{DBIteratorWithThreadMode, IteratorMode, Options, DB};
 
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 /// RocksDb manager.
 #[derive(Clone)]
@@ -80,7 +80,7 @@ impl DbManager<RocksDbStore> for RocksDbManager {
             .db
             .read()
             .map_err(|e| Error::Store(format!("{:?}", e)))?;
-        Ok(db.flush().map_err(|e| Error::Store(format!("{:?}", e)))?)
+        db.flush().map_err(|e| Error::Store(format!("{:?}", e)))
     }
 }
 
@@ -126,7 +126,7 @@ impl Collection for RocksDbStore {
         if let Some(handle) = db.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
             Ok(db
-                .put_cf(handle, key, &data)
+                .put_cf(handle, key, data)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
             Err(Error::Store(
@@ -159,14 +159,13 @@ impl Collection for RocksDbStore {
             .map_err(|e| Error::Get(format!("{:?}", e)))?;
         if let Some(handle) = db.cf_handle(&self.name) {
             let iter = db.iterator_cf(handle, IteratorMode::Start);
-            for result in iter {
-                if let Ok((key, _)) = result {
-                   let key = String::from_utf8(key.to_vec())
-                        .map_err(|_| Error::Store("Can not convert key to string.".to_owned()))?;
-                    if key.starts_with(&self.prefix) {
-                        db.delete_cf(handle, key)
-                            .map_err(|e| Error::Get(format!("{:?}", e)))?;
-                    }
+            for (key, _) in iter.flatten() {
+                let key = String::from_utf8(key.to_vec()).map_err(|_| {
+                    Error::Store("Can not convert key to string.".to_owned())
+                })?;
+                if key.starts_with(&self.prefix) {
+                    db.delete_cf(handle, key)
+                        .map_err(|e| Error::Get(format!("{:?}", e)))?;
                 }
             }
             Ok(())
@@ -207,7 +206,7 @@ impl Collection for RocksDbStore {
 }
 
 type GuardIter<'a> = (
-    Arc<RwLockReadGuard<'a, DB>>,
+    Mutex<RwLockReadGuard<'a, DB>>,
     DBIteratorWithThreadMode<'a, DB>,
 );
 
@@ -257,7 +256,7 @@ impl<'a> Iterator for RocksDbIterator<'a> {
                 .cf_handle(&self.name)
                 .expect("RocksDB column for the store does not exist.");
             let iter = sref.iterator_cf(handle, self.mode);
-            self.current = Some((Arc::new(guard), iter));
+            self.current = Some((Mutex::new(guard), iter));
             &mut self.current.as_mut().unwrap().1
         };
         while let Some(Ok((key, value))) = iter.next() {
@@ -273,7 +272,7 @@ impl<'a> Iterator for RocksDbIterator<'a> {
     }
 }
 
-unsafe fn change_lifetime_const<'a, 'b, T>(x: &'a T) -> &'b T {
+unsafe fn change_lifetime_const<'b, T>(x: &T) -> &'b T {
     &*(x as *const T)
 }
 

@@ -197,7 +197,7 @@ pub trait PersistentActor:
         password: Option<[u8; 32]>,
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().key();
-        let store = Store::<Self>::new(&name, &prefix, manager, password)
+        let store = Store::<Self>::new(name, &prefix, manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
         let response = store.ask(StoreCommand::Recover).await?;
@@ -348,16 +348,16 @@ impl<P: PersistentActor> Store<P> {
     /// Persist an event and the state.
     /// This method is used to persist an event and the state of the actor in a single operation.
     /// This applies in scenarios where we want to keep only the last event and state.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// - event: The event to persist.
     /// - state: The state of the actor (without applying the event).
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
+    ///
     fn persist_state<E>(&mut self, event: &E, state: &P) -> Result<(), Error>
     where
         E: Event + Serialize + DeserializeOwned,
@@ -382,11 +382,11 @@ impl<P: PersistentActor> Store<P> {
     /// Returns the last event.
     ///
     /// # Returns
-    /// 
+    ///
     /// The last event.
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
+    ///
     fn last_event(&self) -> Result<Option<P::Event>, Error> {
         if let Some((_, data)) = self.events.last() {
             let event: P::Event = if let Some(key_box) = &self.key_box {
@@ -521,11 +521,11 @@ impl<P: PersistentActor> Store<P> {
     }
 
     /// Purge the store.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// An error if the operation failed.
-    /// 
+    ///
     pub fn purge(&mut self) -> Result<(), Error> {
         self.events.purge()?;
         self.states.purge()?;
@@ -720,7 +720,7 @@ where
                 let state =
                     self.find(filter).map_err(|_| ActorError::EntryNotFound)?;
                 Ok(StoreResponse::State(state))
-            },
+            }
             // Get the last event.
             StoreCommand::LastEvent => match self.last_event() {
                 Ok(event) => {
@@ -743,8 +743,12 @@ where
             }
             // Get the last events from a number of counter.
             StoreCommand::LastEventsFrom(from) => {
-                let events = self.events(from, self.event_counter)
-                    .map_err(|_| ActorError::Store("Unable to get the latest events".to_owned()))?;
+                let events =
+                    self.events(from, self.event_counter).map_err(|_| {
+                        ActorError::Store(
+                            "Unable to get the latest events".to_owned(),
+                        )
+                    })?;
                 Ok(StoreResponse::LastEvents(events))
             }
         }
@@ -967,10 +971,8 @@ mod tests {
         } else {
             panic!("Event number not found");
         }
-        let response = store
-            .ask(StoreCommand::LastEventsFrom(1))
-            .await
-            .unwrap();
+        let response =
+            store.ask(StoreCommand::LastEventsFrom(1)).await.unwrap();
         if let StoreResponse::LastEvents(events) = response {
             assert_eq!(events.len(), 1);
             assert_eq!(events[0].0, 10);

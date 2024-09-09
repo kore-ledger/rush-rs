@@ -227,14 +227,9 @@ where
                 }
                 // Handle child action from `child_receiver`.
                 action = self.child_receiver.recv() => {
-                    if let Some(action) = action {
-                        match action {
-                            ChildAction::Stop => {
-                                ctx.set_state(ActorLifecycle::Stopped);
-                                ctx.stop().await;
-                            }
-                            _ => {},
-                        }
+                    if let Some(ChildAction::Stop) = action {
+                        ctx.set_state(ActorLifecycle::Stopped);
+                        ctx.stop().await;
                     }
                 }
                 _ = self.token.cancelled() => {

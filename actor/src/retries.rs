@@ -7,7 +7,9 @@
 //!
 
 use crate::{
-    supervision::{RetryStrategy, Strategy}, Actor, ActorContext, ActorPath, ActorRef, Error, Event, Handler, Message, Response
+    supervision::{RetryStrategy, Strategy},
+    Actor, ActorContext, ActorPath, ActorRef, Error, Event, Handler, Message,
+    Response,
 };
 
 use async_trait::async_trait;
@@ -24,7 +26,7 @@ where
     message: T::Message,
     retry_strategy: Strategy,
     retries: usize,
-    is_end: bool
+    is_end: bool,
 }
 
 impl<T> RetryActor<T>
@@ -42,7 +44,7 @@ where
             message,
             retry_strategy,
             retries: 0,
-            is_end: false
+            is_end: false,
         }
     }
 }
@@ -98,27 +100,33 @@ where
                             self.retries,
                             self.retry_strategy.max_retries()
                         );
-            
+
                         // Send retry to parent.
-                        if let Some(child) = ctx.get_child::<T>("target").await {
+                        if let Some(child) = ctx.get_child::<T>("target").await
+                        {
                             if child.tell(self.message.clone()).await.is_err() {
                                 error!("Cannot initiate retry to send message");
                             }
                         }
-            
+
                         // Backoff
-                        if let Some(duration) = self.retry_strategy.next_backoff() {
+                        if let Some(duration) =
+                            self.retry_strategy.next_backoff()
+                        {
                             debug!("Backoff for {:?}", &duration);
                             tokio::time::sleep(duration).await;
                         }
-            
-                        if let Some(actor) = ctx.system().get_actor(ctx.path()).await {
+
+                        if let Some(actor) =
+                            ctx.system().get_actor(ctx.path()).await
+                        {
                             let actor: ActorRef<RetryActor<T>> = actor;
                             if actor.tell(RetryMessage::Retry).await.is_err() {
                                 error!("Cannot initiate retry to send message");
                                 let _ = ctx
                                     .emit_error(Error::Send(
-                                        "Cannot initiate retry to send message".to_owned(),
+                                        "Cannot initiate retry to send message"
+                                            .to_owned(),
                                     ))
                                     .await;
                             }
@@ -130,7 +138,6 @@ where
                                 .await;
                         };
                         // Next retry
-            
                     } else {
                         error!("Max retries reached.");
                         let _ = ctx
@@ -142,7 +149,7 @@ where
                         ctx.stop().await;
                     }
                 }
-            },
+            }
             RetryMessage::End => {
                 self.is_end = true;
                 debug!("RetryActor end");
@@ -215,8 +222,11 @@ mod tests {
         ) -> Result<(), Error> {
             println!("Message: {:?}", message);
             assert_eq!(message.0, "Hello from child");
-            
-            let retry = ctx.get_child::<RetryActor<TargetActor>>("retry").await.unwrap();
+
+            let retry = ctx
+                .get_child::<RetryActor<TargetActor>>("retry")
+                .await
+                .unwrap();
             retry.tell(RetryMessage::End).await.unwrap();
 
             Ok(())
@@ -259,7 +269,9 @@ mod tests {
                     .get_actor::<SourceActor>(&message.source)
                     .await
                     .unwrap();
-                source.tell(SourceMessage("Hello from child".to_owned())).await?;
+                source
+                    .tell(SourceMessage("Hello from child".to_owned()))
+                    .await?;
             }
             Ok(())
         }
@@ -277,7 +289,6 @@ mod tests {
             .create_root_actor::<SourceActor>("source", SourceActor)
             .await
             .unwrap();
-
 
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
