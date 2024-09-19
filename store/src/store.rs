@@ -192,11 +192,15 @@ pub trait PersistentActor:
     async fn start_store<C: Collection>(
         &mut self,
         name: &str,
+        prefix: Option<&str>,
         ctx: &mut ActorContext<Self>,
         manager: impl DbManager<C>,
         password: Option<[u8; 32]>,
     ) -> Result<(), ActorError> {
-        let prefix = ctx.path().key();
+        let prefix = match prefix {
+            Some(prefix) => prefix,
+            None => &ctx.path().key(),
+        };
         let store = Store::<Self>::new(name, &prefix, manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
