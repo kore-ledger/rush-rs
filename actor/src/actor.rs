@@ -10,7 +10,7 @@
 
 use crate::{
     handler::HandleHelper,
-    runner::{ChildSender, InnerMessage, InnerSender},
+    runner::{ChildSender, InnerEvent, InnerSender},
     supervision::SupervisionStrategy,
     system::SystemRef,
     ActorPath, Error,
@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 use async_trait::async_trait;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 
 use tracing::debug;
 
@@ -36,8 +36,6 @@ pub struct ActorContext<A: Actor> {
     path: ActorPath,
     /// The actor system.
     system: SystemRef,
-    /// The actor lifecycle.
-    lifecycle: ActorLifecycle,
     /// Error in the actor.
     error: Option<Error>,
     /// The error sender to send errors to the parent.
@@ -78,7 +76,6 @@ where
         Self {
             path,
             system,
-            lifecycle: ActorLifecycle::Created,
             error: None,
             error_sender,
             inner_sender,
@@ -155,7 +152,7 @@ where
     ///
     pub async fn publish_event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerMessage::Event {
+            .send(InnerEvent::Event {
                 event,
                 publish: true,
             })
@@ -178,31 +175,11 @@ where
     ///
     pub async fn event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerMessage::Event {
+            .send(InnerEvent::Event {
                 event,
                 publish: false,
             })
             .map_err(|_| Error::SendEvent)
-    }
-
-    /// Emits a message to inner handler.
-    ///
-    /// # Arguments
-    ///
-    /// * `message` - The message to emit.
-    ///
-    /// # Returns
-    ///
-    /// Returns a void result.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the message could not be emitted.
-    ///
-    pub async fn message(&self, message: A::Message) -> Result<(), Error> {
-        self.inner_sender
-            .send(InnerMessage::Message(message))
-            .map_err(|_| Error::Send("Message".to_string()))
     }
 
     /// Emits an error.
@@ -221,7 +198,7 @@ where
     ///
     pub async fn emit_error(&mut self, error: Error) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerMessage::Error(error))
+            .send(InnerEvent::Error(error))
             .map_err(|_| Error::Send("Error".to_string()))
     }
 
@@ -244,7 +221,7 @@ where
         // Send fail to parent actor.
         //self.token.cancel();
         self.inner_sender
-            .send(InnerMessage::Fail(error.clone()))
+            .send(InnerEvent::Fail(error.clone()))
             .map_err(|_| Error::Send("Error".to_string()))
     }
 
@@ -253,7 +230,6 @@ where
         while let Some(sender) = self.child_senders.pop() {
             let _ = sender.send(ChildAction::Stop);
         }
-        self.set_state(ActorLifecycle::Stopped);
         self.token.cancel();
         self.system.remove_actor(self.path()).await;
     }
@@ -345,31 +321,6 @@ where
             self.child_senders.push(sender);
         }
         Ok(actor_ref)
-    }
-
-    /// Returns the lifecycle state of the actor.
-    /// The lifecycle state can be one of the following:
-    /// - `ActorLifecycle::Started` - The actor is started.
-    /// - `ActorLifecycle::Failed` - The actor is faulty.
-    /// - `ActorLifecycle::Stopped` - The actor is stopped.
-    /// - `ActorLifecycle::Terminated` - The actor is terminated.
-    ///
-    /// # Returns
-    ///
-    /// Returns the lifecycle state of the actor.
-    ///
-    pub fn state(&self) -> &ActorLifecycle {
-        &self.lifecycle
-    }
-
-    /// Sets the lifecycle state of the actor.
-    ///
-    /// # Arguments
-    ///
-    /// * `state` - The lifecycle state of the actor.
-    ///
-    pub(crate) fn set_state(&mut self, state: ActorLifecycle) {
-        self.lifecycle = state;
     }
 
     /// Returns the error of the actor.
@@ -611,24 +562,6 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
         // Default implementation.
     }
 
-    /// Internal message.
-    /// Override this method to define what should happen when an internal message is emitted by the
-    /// actor.
-    /// By default it does nothing.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The message to handle.
-    /// * `ctx` - The actor context.
-    ///
-    async fn on_message(
-        &mut self,
-        _msg: A::Message,
-        _ctx: &mut ActorContext<A>,
-    ) {
-        // Default implementation.
-    }
-
     /// Called when an error occurs in a child actor.
     /// Override this method to define what should happen when an error occurs in a child actor.
     /// By default it does nothing.
@@ -810,55 +743,6 @@ where
             sender: self.sender.clone(),
             event_receiver: self.event_receiver.resubscribe(),
         }
-    }
-}
-
-/// Dummy actor.
-#[derive(Debug, Clone)]
-pub struct DummyActor;
-
-/// Dummy message.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DummyMessage;
-
-impl Message for DummyMessage {}
-
-/// Dummy response.
-#[derive(Debug, Clone)]
-pub struct DummyResponse;
-
-impl Response for DummyResponse {}
-
-/// Dummy event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DummyEvent;
-
-impl Event for DummyEvent {}
-
-impl Actor for DummyActor {
-    type Message = DummyMessage;
-    type Response = DummyResponse;
-    type Event = DummyEvent;
-}
-
-#[async_trait]
-impl Handler<DummyActor> for DummyActor {
-    async fn handle_message(
-        &mut self,
-        _sender: ActorPath,
-        _message: DummyMessage,
-        _ctx: &mut ActorContext<DummyActor>,
-    ) -> Result<DummyResponse, Error> {
-        Ok(DummyResponse)
-    }
-
-    async fn on_child_error(
-        &mut self,
-        error: Error,
-        _ctx: &mut ActorContext<DummyActor>,
-    ) {
-        // Default implementation from child actor errors.
-        assert_eq!(error, Error::Send("Error".to_string()));
     }
 }
 

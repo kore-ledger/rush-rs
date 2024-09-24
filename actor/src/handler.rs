@@ -70,15 +70,15 @@ where
             if let Some(rsvp) = self.rsvp.take() {
                 debug!("Sending back response (if any).");
                 rsvp.send(result).unwrap_or_else(|_failed| {
-                    error!("Failed to send back response!"); // GCOV-LINE
+                    error!("Failed to send back response!"); // GRCOV-LINE
                 })
             }
         } else {
             debug!("Stopping actor.");
             // TODO: Manage pre_stop error
             if actor.pre_stop(ctx).await.is_err() {
-                error!("Failed to stop actor!");
-                let _ = ctx.emit_fail(Error::Stop).await;
+                error!("Failed to stop actor!"); // GRCOV-LINE
+                let _ = ctx.emit_fail(Error::Stop).await; // GRCOV-LINE
             }
             ctx.stop().await;
         }
@@ -145,12 +145,12 @@ where
         let msg =
             ActorMessage::new(Some(message), sender, Some(response_sender));
         if let Err(error) = self.sender.send(Box::new(msg)) {
-            error!("Failed to ask message! {}", error.to_string());
+            error!("Failed to ask message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
-        } else {
+        } else { // GRCOV-END
             response_receiver
                 .await
-                .map_err(|error| Error::Send(error.to_string()))?
+                .map_err(|error| Error::Send(error.to_string()))? // GRCOV-LINE
         }
     }
 
@@ -159,8 +159,8 @@ where
         debug!("Stopping actor from handle reference.");
         let msg: ActorMessage<A> = ActorMessage::new(None, sender, None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
-            error!("Failed to stop actor! {}", error.to_string()); // GCOV-LINE
-        }
+            error!("Failed to stop actor! {}", error.to_string()); // GRCOV-LINE
+        } // GRCOV-LINE
     }
 
     /// Closes the sender.

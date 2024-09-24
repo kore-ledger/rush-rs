@@ -29,8 +29,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error};
 
 /// Inner sender and receiver types.
-pub type InnerSender<A> = mpsc::UnboundedSender<InnerMessage<A>>;
-pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerMessage<A>>;
+pub type InnerSender<A> = mpsc::UnboundedSender<InnerEvent<A>>;
+pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerEvent<A>>;
 
 /// Child sender and receiver for child actions.
 pub type ChildSender = mpsc::UnboundedSender<ChildAction>;
@@ -40,6 +40,7 @@ pub type ChildReceiver = mpsc::UnboundedReceiver<ChildAction>;
 pub(crate) struct ActorRunner<A: Actor> {
     path: ActorPath,
     actor: A,
+    lifecycle: ActorLifecycle,
     receiver: MailboxReceiver<A>,
     event_sender: EventSender<A::Event>,
     error_sender: ChildErrorSender,
@@ -75,6 +76,7 @@ where
         let runner = ActorRunner {
             path,
             actor,
+            lifecycle: ActorLifecycle::Created,
             receiver,
             event_sender,
             error_sender,
@@ -105,7 +107,7 @@ where
         // Main loop of the actor.
         let mut retries = 0;
         loop {
-            match ctx.state() {
+            match self.lifecycle {
                 // State: CREATED
                 ActorLifecycle::Created => {
                     debug!("Actor {} is created.", &self.path);
@@ -116,7 +118,7 @@ where
                                 "Actor '{}' has started successfully.",
                                 &self.path
                             );
-                            ctx.set_state(ActorLifecycle::Started);
+                            self.lifecycle = ActorLifecycle::Started;
                         }
                         Err(err) => {
                             error!(
@@ -124,7 +126,7 @@ where
                                 &self.path, err
                             );
                             ctx.set_error(err);
-                            ctx.set_state(ActorLifecycle::Failed);
+                            self.lifecycle = ActorLifecycle::Failed;
                         }
                     }
                 }
@@ -132,12 +134,8 @@ where
                 ActorLifecycle::Started => {
                     debug!("Actor {} is started.", &self.path);
                     self.run(&mut ctx).await;
-                    if ctx.error().is_none()
-                        || ctx.state() == &ActorLifecycle::Stopped
-                    {
-                        ctx.set_state(ActorLifecycle::Stopped);
-                    } else {
-                        ctx.set_state(ActorLifecycle::Failed);
+                    if ctx.error().is_some() {
+                        self.lifecycle = ActorLifecycle::Failed;
                     }
                 }
                 // State: RESTARTED
@@ -157,13 +155,13 @@ where
                     if self.actor.post_stop(&mut ctx).await.is_err() {
                         error!("Actor '{}' failed to stop!", &self.path);
                     }
-                    ctx.set_state(ActorLifecycle::Terminated);
+                    self.lifecycle = ActorLifecycle::Terminated;
                 }
                 // State: FAILED
                 ActorLifecycle::Failed => {
                     debug!("Actor {} is faulty.", &self.path);
                     if self.parent_sender.is_none() {
-                        ctx.set_state(ActorLifecycle::Restarted);
+                        self.lifecycle = ActorLifecycle::Restarted;
                     }
                 }
                 // State: TERMINATED
@@ -196,7 +194,7 @@ where
                         msg.handle(&mut self.actor, ctx).await;
                     } else {
                         debug!("Actor {} is stopped.", &self.path);
-                        ctx.set_state(ActorLifecycle::Stopped);
+                        self.lifecycle = ActorLifecycle::Stopped;
                         break;
                     }
                 }
@@ -213,7 +211,7 @@ where
                             },
                         }
                     } else {
-                        ctx.set_state(ActorLifecycle::Stopped);
+                        self.lifecycle = ActorLifecycle::Stopped;
                         break;
                     }
                 }
@@ -228,13 +226,13 @@ where
                 // Handle child action from `child_receiver`.
                 action = self.child_receiver.recv() => {
                     if let Some(ChildAction::Stop) = action {
-                        ctx.set_state(ActorLifecycle::Stopped);
+                        self.lifecycle = ActorLifecycle::Stopped;
                         ctx.stop().await;
                     }
                 }
                 _ = self.token.cancelled() => {
                     debug!("Actor {} is stopped.", &self.path);
-                    ctx.set_state(ActorLifecycle::Stopped);
+                    self.lifecycle = ActorLifecycle::Stopped;
                     break;
                 }
             }
@@ -244,11 +242,11 @@ where
     /// Inner message handler.
     async fn inner_handle(
         &mut self,
-        event: InnerMessage<A>,
+        event: InnerEvent<A>,
         ctx: &mut ActorContext<A>,
     ) {
         match event {
-            InnerMessage::Event { event, publish } => {
+            InnerEvent::Event { event, publish } => {
                 if publish {
                     // Publish event to subscribers.
                     match self.event_sender.send(event.clone()) {
@@ -266,11 +264,7 @@ where
                 // Handle inner event.
                 self.actor.on_event(event, ctx).await;
             }
-            InnerMessage::Message(msg) => {
-                // Handle inner message.
-                self.actor.on_message(msg, ctx).await;
-            }
-            InnerMessage::Error(error) => {
+            InnerEvent::Error(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     // Send error to parent.
                     parent_helper
@@ -283,7 +277,7 @@ where
                         });
                 }
             }
-            InnerMessage::Fail(error) => {
+            InnerEvent::Fail(error) => {
                 // If the actor has a parent, send the fail to the parent.
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     let (action_sender, action_receiver) = oneshot::channel();
@@ -303,26 +297,20 @@ where
                     if let Ok(action) = action_receiver.await {
                         match action {
                             ChildAction::Stop => {
-                                ctx.set_state(ActorLifecycle::Stopped);
+                                //self.lifecycle = ActorLifecycle::Stopped;
                                 ctx.stop().await;
                             }
                             ChildAction::Start => {
-                                ctx.set_state(ActorLifecycle::Started);
+                                self.lifecycle = ActorLifecycle::Started;
                                 self.token.cancel();
                             }
-                            ChildAction::Restart => {
-                                ctx.set_state(ActorLifecycle::Restarted);
-                                self.token.cancel();
-                            }
-                            ChildAction::Delegate => {
-                                ctx.set_state(ActorLifecycle::Failed);
+                            ChildAction::Restart | ChildAction::Delegate => {
+                                self.lifecycle = ActorLifecycle::Restarted;
                                 self.token.cancel();
                             }
                         }
                     }
                 } else {
-                    // If the actor has no parent, set the state to stopped.
-                    ctx.set_state(ActorLifecycle::Stopped);
                     ctx.stop().await;
                 }
             }
@@ -341,7 +329,7 @@ where
         match strategy {
             SupervisionStrategy::Stop => {
                 error!("Actor '{}' failed to start!", &self.path);
-                ctx.set_state(ActorLifecycle::Stopped);
+                self.lifecycle = ActorLifecycle::Stopped;   
             }
             SupervisionStrategy::Retry(mut retry_strategy) => {
                 debug!(
@@ -358,7 +346,7 @@ where
                     let error = ctx.error();
                     match ctx.restart(&mut self.actor, error.as_ref()).await {
                         Ok(_) => {
-                            ctx.set_state(ActorLifecycle::Started);
+                            self.lifecycle = ActorLifecycle::Started;
                             *retries = 0;
                             let token = CancellationToken::new();
                             ctx.set_token(token.clone());
@@ -369,7 +357,7 @@ where
                         }
                     }
                 } else {
-                    ctx.set_state(ActorLifecycle::Stopped);
+                    self.lifecycle = ActorLifecycle::Stopped;
                 }
             }
         }
@@ -378,11 +366,9 @@ where
 
 /// Inner message.
 #[derive(Debug, Clone)]
-pub enum InnerMessage<A: Actor> {
+pub enum InnerEvent<A: Actor> {
     /// Event
     Event { event: A::Event, publish: bool },
-    /// Message
-    Message(A::Message),
     /// Error
     Error(Error),
     /// Fail
