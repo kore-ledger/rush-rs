@@ -5,7 +5,7 @@ binary-path: ./target/debug
 source-dir: .
 excl-line: "\/\/[^\n\r]GRCOV-LINE[\s\n\r]"
 excl-start: "\/\/[^\n\r]GRCOV-START[\s\n\r]"
-excl-end: "\/\/[^\n\r]GRCOV-END[\s\n\r]"
+excl-stop: "\/\/[^\n\r]GRCOV-END[\s\n\r]"
 ignore-not-existing: true
 ignore:
   - "/*"
