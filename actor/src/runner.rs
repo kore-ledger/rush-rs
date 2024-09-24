@@ -29,8 +29,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error};
 
 /// Inner sender and receiver types.
-pub type InnerSender<A> = mpsc::UnboundedSender<InnerMessage<A>>;
-pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerMessage<A>>;
+pub type InnerSender<A> = mpsc::UnboundedSender<InnerEvent<A>>;
+pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerEvent<A>>;
 
 /// Child sender and receiver for child actions.
 pub type ChildSender = mpsc::UnboundedSender<ChildAction>;
@@ -242,11 +242,11 @@ where
     /// Inner message handler.
     async fn inner_handle(
         &mut self,
-        event: InnerMessage<A>,
+        event: InnerEvent<A>,
         ctx: &mut ActorContext<A>,
     ) {
         match event {
-            InnerMessage::Event { event, publish } => {
+            InnerEvent::Event { event, publish } => {
                 if publish {
                     // Publish event to subscribers.
                     match self.event_sender.send(event.clone()) {
@@ -264,11 +264,7 @@ where
                 // Handle inner event.
                 self.actor.on_event(event, ctx).await;
             }
-            InnerMessage::Message(msg) => {
-                // Handle inner message.
-                self.actor.on_message(msg, ctx).await;
-            }
-            InnerMessage::Error(error) => {
+            InnerEvent::Error(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     // Send error to parent.
                     parent_helper
@@ -281,7 +277,7 @@ where
                         });
                 }
             }
-            InnerMessage::Fail(error) => {
+            InnerEvent::Fail(error) => {
                 // If the actor has a parent, send the fail to the parent.
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     let (action_sender, action_receiver) = oneshot::channel();
@@ -370,11 +366,9 @@ where
 
 /// Inner message.
 #[derive(Debug, Clone)]
-pub enum InnerMessage<A: Actor> {
+pub enum InnerEvent<A: Actor> {
     /// Event
     Event { event: A::Event, publish: bool },
-    /// Message
-    Message(A::Message),
     /// Error
     Error(Error),
     /// Fail
