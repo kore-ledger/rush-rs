@@ -36,8 +36,6 @@ pub struct ActorContext<A: Actor> {
     path: ActorPath,
     /// The actor system.
     system: SystemRef,
-    /// The actor lifecycle.
-    lifecycle: ActorLifecycle,
     /// Error in the actor.
     error: Option<Error>,
     /// The error sender to send errors to the parent.
@@ -78,7 +76,6 @@ where
         Self {
             path,
             system,
-            lifecycle: ActorLifecycle::Created,
             error: None,
             error_sender,
             inner_sender,
@@ -253,7 +250,6 @@ where
         while let Some(sender) = self.child_senders.pop() {
             let _ = sender.send(ChildAction::Stop);
         }
-        self.set_state(ActorLifecycle::Stopped);
         self.token.cancel();
         self.system.remove_actor(self.path()).await;
     }
@@ -345,31 +341,6 @@ where
             self.child_senders.push(sender);
         }
         Ok(actor_ref)
-    }
-
-    /// Returns the lifecycle state of the actor.
-    /// The lifecycle state can be one of the following:
-    /// - `ActorLifecycle::Started` - The actor is started.
-    /// - `ActorLifecycle::Failed` - The actor is faulty.
-    /// - `ActorLifecycle::Stopped` - The actor is stopped.
-    /// - `ActorLifecycle::Terminated` - The actor is terminated.
-    ///
-    /// # Returns
-    ///
-    /// Returns the lifecycle state of the actor.
-    ///
-    pub fn state(&self) -> &ActorLifecycle {
-        &self.lifecycle
-    }
-
-    /// Sets the lifecycle state of the actor.
-    ///
-    /// # Arguments
-    ///
-    /// * `state` - The lifecycle state of the actor.
-    ///
-    pub(crate) fn set_state(&mut self, state: ActorLifecycle) {
-        self.lifecycle = state;
     }
 
     /// Returns the error of the actor.
