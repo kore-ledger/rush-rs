@@ -148,7 +148,7 @@ where
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to ask message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
-        } else { 
+        } else {
             // GRCOV-END
             response_receiver
                 .await

@@ -13,7 +13,7 @@ use thiserror::Error;
 /// Error type for the actor system.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum Error {
-    /// An error occurred while sending a message to an actor. 
+    /// An error occurred while sending a message to an actor.
     #[error("An error occurred while sending a message to actor: {0}.")]
     Send(String),
     /// An error occurred while receiving a message from an actor.
@@ -63,6 +63,6 @@ pub enum Error {
     ReTry,
     /// Can not get a helper.
     #[error("An attempt was made to access a helper that does not exist.")]
-    NotHelper, 
+    NotHelper,
 }
 // GRCOV-END
