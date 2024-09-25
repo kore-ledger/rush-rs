@@ -329,7 +329,7 @@ where
         match strategy {
             SupervisionStrategy::Stop => {
                 error!("Actor '{}' failed to start!", &self.path);
-                self.lifecycle = ActorLifecycle::Stopped;   
+                self.lifecycle = ActorLifecycle::Stopped;
             }
             SupervisionStrategy::Retry(mut retry_strategy) => {
                 debug!(

@@ -199,7 +199,7 @@ pub trait PersistentActor:
     ) -> Result<(), ActorError> {
         let prefix = match prefix {
             Some(prefix) => prefix,
-            None => ctx.path().key()
+            None => ctx.path().key(),
         };
         let store = Store::<Self>::new(name, &prefix, manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
@@ -620,6 +620,7 @@ pub enum StoreCommand<P, E> {
     LastEvent,
     LastEventNumber,
     LastEventsFrom(usize),
+    GetEvents { from: usize, to: usize },
     Recover,
     Purge,
 }
@@ -644,7 +645,7 @@ where
     State(Option<P>),
     LastEvent(Option<P::Event>),
     LastEventNumber(usize),
-    LastEvents(Vec<P::Event>),
+    Events(Vec<P::Event>),
     Error(Error),
 }
 
@@ -719,6 +720,12 @@ where
                 }
                 Err(e) => Ok(StoreResponse::Error(e)),
             },
+            StoreCommand::GetEvents { from, to } => {
+                let events = self.events(from, to).map_err(|_| {
+                    ActorError::Store("Unable to get events range.".to_owned())
+                })?;
+                Ok(StoreResponse::Events(events))
+            }
             // Find a state.
             StoreCommand::Find(filter) => {
                 let state =
@@ -753,7 +760,7 @@ where
                             "Unable to get the latest events".to_owned(),
                         )
                     })?;
-                Ok(StoreResponse::LastEvents(events))
+                Ok(StoreResponse::Events(events))
             }
         }
     }
@@ -977,12 +984,24 @@ mod tests {
         }
         let response =
             store.ask(StoreCommand::LastEventsFrom(1)).await.unwrap();
-        if let StoreResponse::LastEvents(events) = response {
+        if let StoreResponse::Events(events) = response {
             assert_eq!(events.len(), 1);
             assert_eq!(events[0].0, 10);
         } else {
             panic!("Events not found");
         }
+        let response = store
+            .ask(StoreCommand::GetEvents { from: 0, to: 2 })
+            .await
+            .unwrap();
+        if let StoreResponse::Events(events) = response {
+            assert_eq!(events.len(), 2);
+            assert_eq!(events[0].0, 10);
+            assert_eq!(events[1].0, 10);
+        } else {
+            panic!("Events not found");
+        }
+
     }
 
     #[tokio::test]
