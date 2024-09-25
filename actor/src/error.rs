@@ -7,13 +7,13 @@
 use crate::ActorPath;
 
 use thiserror::Error;
-
+// GRCOV-START
 // TODO: We should improve the error handling in the actor system.
 
 /// Error type for the actor system.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum Error {
-    /// An error occurred while sending a message to an actor. // GRCOV-START
+    /// An error occurred while sending a message to an actor. 
     #[error("An error occurred while sending a message to actor: {0}.")]
     Send(String),
     /// An error occurred while receiving a message from an actor.
@@ -63,5 +63,6 @@ pub enum Error {
     ReTry,
     /// Can not get a helper.
     #[error("An attempt was made to access a helper that does not exist.")]
-    NotHelper, // GRCOV-END
+    NotHelper, 
 }
+// GRCOV-END

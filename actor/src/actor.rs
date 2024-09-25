@@ -156,7 +156,7 @@ where
                 event,
                 publish: true,
             })
-            .map_err(|_| Error::SendEvent)
+            .map_err(|_| Error::SendEvent) // GRCOV-LINE
     }
 
     /// Emits an event to inner handler.
@@ -179,7 +179,7 @@ where
                 event,
                 publish: false,
             })
-            .map_err(|_| Error::SendEvent)
+            .map_err(|_| Error::SendEvent) // GRCOV-LINE
     }
 
     /// Emits an error.
@@ -199,7 +199,7 @@ where
     pub async fn emit_error(&mut self, error: Error) -> Result<(), Error> {
         self.inner_sender
             .send(InnerEvent::Error(error))
-            .map_err(|_| Error::Send("Error".to_string()))
+            .map_err(|_| Error::Send("Error".to_string())) // GRCOV-LINE
     }
 
     /// Emits a fail.
@@ -222,7 +222,7 @@ where
         //self.token.cancel();
         self.inner_sender
             .send(InnerEvent::Fail(error.clone()))
-            .map_err(|_| Error::Send("Error".to_string()))
+            .map_err(|_| Error::Send("Error".to_string())) // GRCOV-LINE
     }
 
     /// Stop the actor.

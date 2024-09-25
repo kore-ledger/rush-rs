@@ -71,7 +71,7 @@ where
                 debug!("Sending back response (if any).");
                 rsvp.send(result).unwrap_or_else(|_failed| {
                     error!("Failed to send back response!"); // GRCOV-LINE
-                })
+                }) // GRCOV-LINE
             }
         } else {
             debug!("Stopping actor.");
@@ -126,9 +126,10 @@ where
         debug!("Telling message to actor from handle reference.");
         let msg = ActorMessage::new(Some(message), sender, None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
-            error!("Failed to tell message! {}", error.to_string());
+            error!("Failed to tell message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
         } else {
+            // GRCOV-END
             debug!("Message sent successfully.");
             Ok(())
         }
@@ -147,7 +148,8 @@ where
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to ask message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
-        } else { // GRCOV-END
+        } else { 
+            // GRCOV-END
             response_receiver
                 .await
                 .map_err(|error| Error::Send(error.to_string()))? // GRCOV-LINE
