@@ -249,7 +249,7 @@ where
     P: PersistentActor,
 {
     /// The event counter index.
-    event_counter: usize,
+    event_counter: u64,
     /// The events collection.
     events: Box<dyn Collection>,
     /// The states collection.
@@ -418,8 +418,8 @@ impl<P: PersistentActor> Store<P> {
     /// Retrieve events.
     fn events(
         &mut self,
-        from: usize,
-        to: usize,
+        from: u64,
+        to: u64,
     ) -> Result<Vec<P::Event>, Error> {
         let mut events = Vec::new();
         for i in from..to {
@@ -512,7 +512,7 @@ impl<P: PersistentActor> Store<P> {
                 Error::Store(format!("Can't deserialize state: {}", e))
             })?;
             // Recover events from the last state.
-            let events = self.events(self.event_counter, usize::MAX)?;
+            let events = self.events(self.event_counter, u64::MAX)?;
             for event in events {
                 state.apply(&event);
                 self.event_counter += 1;
@@ -619,8 +619,8 @@ pub enum StoreCommand<P, E> {
     Find(fn(&P) -> bool),
     LastEvent,
     LastEventNumber,
-    LastEventsFrom(usize),
-    GetEvents { from: usize, to: usize },
+    LastEventsFrom(u64),
+    GetEvents { from: u64, to: u64 },
     Recover,
     Purge,
 }
@@ -644,7 +644,7 @@ where
     Snapshotted,
     State(Option<P>),
     LastEvent(Option<P::Event>),
-    LastEventNumber(usize),
+    LastEventNumber(u64),
     Events(Vec<P::Event>),
     Error(Error),
 }
