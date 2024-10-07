@@ -101,6 +101,49 @@ pub trait PersistentActor:
         }
     }
 
+
+    /// Light persistence of an event.
+    ///
+    /// # Arguments
+    ///
+    /// - event: The event to persist.
+    /// - store: The store actor.
+    /// - state: The actor.
+    ///
+    /// # Returns
+    ///
+    /// The result of the operation.
+    ///
+    /// # Errors
+    ///
+    /// An error if the operation failed.
+    ///
+    async fn persist_light(
+        &mut self,
+        event: &Self::Event,
+        state: &Self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        let store = match ctx.get_child::<Store<Self>>("store").await {
+            Some(store) => store,
+            None => {
+                return Err(ActorError::Store(
+                    "Can't get store actor".to_string(),
+                ))
+            }
+        };
+        let response = store
+            .ask(StoreCommand::PersistLight(event.clone(), state.clone()))
+            .await
+            .map_err(|e| ActorError::Store(e.to_string()))?;
+        if let StoreResponse::Persisted = response {
+            self.apply(event);
+            Ok(())
+        } else {
+            Err(ActorError::Store("Can't persist event".to_string()))
+        }
+    }
+
     /// Snapshot the state.
     ///
     /// # Arguments
