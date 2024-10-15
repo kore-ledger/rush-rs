@@ -2,13 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.4.2] - 2024-08-08
+## [0.5.0] - 2024-10-15
 
 ### 🚀 Features
 
-- Add pre-start hook
+- Purge persistent actor - iss4
+- Retrieve a set of the latest events #6
+- Range queries (iss11)
+- New persist_liht method from PersistentActor
+- New actor runner loop
 
-## [0.4.1] - 2024-08-06
+### 🐛 Bug Fixes
+
+- Refactoring retries
+- Retry and return last event in store
+- Retry backoff order
+- Change RetryActor
+- Clippy warnings
+- Optional prefix parameter in start store
+- Creates a temporary value which is freed while still in use
+- Change lifecycle from context to actor
+- Remove inner messages and dummy actor
+- Change usize for u64 in event counter
+
+### 🧪 Testing
+
+- Coverage support
+- Improvement coverage
+- Coverage improvement
+
+## [0.4.3] - 2024-08-12
 
 ### 🚀 Features
 
@@ -17,6 +40,9 @@ All notable changes to this project will be documented in this file.
 - Stop childs
 - Find actor from a predicate
 - New errors
+- Add pre-start hook
+- Sink module
+- Run sink in system
 
 ### 🐛 Bug Fixes
 
@@ -26,10 +52,14 @@ All notable changes to this project will be documented in this file.
 - Default options in rocksdb
 - Persistent actor serialization
 - Stop root actor
+- Add rust cache in cargo build
+- Operator div fix
 
 ### 📚 Documentation
 
 - Start store parameters
+- Update changelog
+- Update version
 
 ## [0.3.2] - 2024-07-07
 
