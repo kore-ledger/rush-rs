@@ -914,7 +914,7 @@ mod tests {
             match msg {
                 TestMessage::Increment(value) => {
                     let event = TestEvent(value);
-                    ctx.event(event).await.unwrap();
+                    self.on_event(event, ctx).await;
                     Ok(TestResponse::None)
                 }
                 TestMessage::Recover => {
