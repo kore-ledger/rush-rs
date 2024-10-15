@@ -1,4 +1,4 @@
-// Integrations tests for the actor module
+  // Integrations tests for the actor module
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ActorSystem, ChildAction, Error,

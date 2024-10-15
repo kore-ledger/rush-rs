@@ -10,7 +10,7 @@ use crate::{
         ChildErrorReceiver, ChildErrorSender, Handler,
     },
     //error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
-    handler::{mailbox, HandleHelper, MailboxReceiver},
+    handler::{mailbox, HandleHelper, MailboxReceiver, MessageHandler},
     supervision::{RetryStrategy, SupervisionStrategy},
     system::SystemRef,
     ActorPath,
@@ -28,9 +28,11 @@ use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error};
 
+use std::collections::VecDeque;
+
 /// Inner sender and receiver types.
-pub type InnerSender<A> = mpsc::UnboundedSender<InnerEvent<A>>;
-pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerEvent<A>>;
+pub type InnerSender<A> = mpsc::UnboundedSender<InnerAction<A>>;
+pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerAction<A>>;
 
 /// Child sender and receiver for child actions.
 pub type ChildSender = mpsc::UnboundedSender<ChildAction>;
@@ -41,6 +43,7 @@ pub(crate) struct ActorRunner<A: Actor> {
     path: ActorPath,
     actor: A,
     lifecycle: ActorLifecycle,
+    messages: VecDeque<Box<dyn MessageHandler<A>>>,
     receiver: MailboxReceiver<A>,
     event_sender: EventSender<A::Event>,
     error_sender: ChildErrorSender,
@@ -77,6 +80,7 @@ where
             path,
             actor,
             lifecycle: ActorLifecycle::Created,
+            messages: VecDeque::new(),
             receiver,
             event_sender,
             error_sender,
@@ -187,13 +191,19 @@ where
     pub(crate) async fn run(&mut self, ctx: &mut ActorContext<A>) {
         debug!("Running actor {}.", &self.path);
         loop {
+            if ctx.error().is_none() {
+                if let Some(mut msg) = self.messages.pop_front() {
+                    msg.handle(&mut self.actor, ctx).await;
+                }
+            }
             select! {
-                // Handle message from `ActorRef`.
+                // Gets message handler from mailbox receiver and push it to the messages queue.
                 msg = self.receiver.recv() => {
-                    if let Some(mut msg) = msg {
-                        msg.handle(&mut self.actor, ctx).await;
+                    if let Some(msg) = msg {
+                        //msg.handle(&mut self.actor, ctx).await;
+                        self.messages.push_back(msg);
                     } else {
-                        debug!("Actor {} is stopped.", &self.path);
+                        debug!("Channel for Actor {} is closed. Stopping actor.", &self.path);
                         self.lifecycle = ActorLifecycle::Stopped;
                         break;
                     }
@@ -242,29 +252,24 @@ where
     /// Inner message handler.
     async fn inner_handle(
         &mut self,
-        event: InnerEvent<A>,
+        event: InnerAction<A>,
         ctx: &mut ActorContext<A>,
     ) {
         match event {
-            InnerEvent::Event { event, publish } => {
-                if publish {
-                    // Publish event to subscribers.
-                    match self.event_sender.send(event.clone()) {
-                        Ok(size) => {
-                            debug!(
-                                "Event sent successfully to {} subscribers.",
-                                size
-                            );
-                        }
-                        Err(_err) => {
-                            error!("Failed to send event");
-                        }
+            InnerAction::Event( event ) => {
+                match self.event_sender.send(event.clone()) {
+                    Ok(size) => {
+                        debug!(
+                            "Event sent successfully to {} subscribers.",
+                            size
+                        );
+                    }
+                    Err(_err) => {
+                        error!("Failed to send event");
                     }
                 }
-                // Handle inner event.
-                self.actor.on_event(event, ctx).await;
             }
-            InnerEvent::Error(error) => {
+            InnerAction::Error(error) => {
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     // Send error to parent.
                     parent_helper
@@ -277,7 +282,7 @@ where
                         });
                 }
             }
-            InnerEvent::Fail(error) => {
+            InnerAction::Fail(error) => {
                 // If the actor has a parent, send the fail to the parent.
                 if let Some(parent_helper) = self.parent_sender.as_mut() {
                     let (action_sender, action_receiver) = oneshot::channel();
@@ -295,6 +300,8 @@ where
                         });
                     // Sets the state from action.
                     if let Ok(action) = action_receiver.await {
+                        // Clean error.
+                        ctx.clean_error();
                         match action {
                             ChildAction::Stop => {
                                 //self.lifecycle = ActorLifecycle::Stopped;
@@ -364,11 +371,11 @@ where
     }
 }
 
-/// Inner message.
+/// Inner error.
 #[derive(Debug, Clone)]
-pub enum InnerEvent<A: Actor> {
+pub enum InnerAction<A: Actor> {
     /// Event
-    Event { event: A::Event, publish: bool },
+    Event(A::Event),
     /// Error
     Error(Error),
     /// Fail

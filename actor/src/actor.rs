@@ -10,7 +10,7 @@
 
 use crate::{
     handler::HandleHelper,
-    runner::{ChildSender, InnerEvent, InnerSender},
+    runner::{ChildSender, InnerAction, InnerSender},
     supervision::SupervisionStrategy,
     system::SystemRef,
     ActorPath, Error,
@@ -152,10 +152,7 @@ where
     ///
     pub async fn publish_event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerEvent::Event {
-                event,
-                publish: true,
-            })
+            .send(InnerAction::Event(event))
             .map_err(|_| Error::SendEvent) // GRCOV-LINE
     }
 
@@ -173,13 +170,9 @@ where
     ///
     /// Returns an error if the event could not be emitted.
     ///
+    #[deprecated(since="0.5.0", note="please use `publish_event` instead")]
     pub async fn event(&self, event: A::Event) -> Result<(), Error> {
-        self.inner_sender
-            .send(InnerEvent::Event {
-                event,
-                publish: false,
-            })
-            .map_err(|_| Error::SendEvent) // GRCOV-LINE
+        self.publish_event(event).await
     }
 
     /// Emits an error.
@@ -198,7 +191,7 @@ where
     ///
     pub async fn emit_error(&mut self, error: Error) -> Result<(), Error> {
         self.inner_sender
-            .send(InnerEvent::Error(error))
+            .send(InnerAction::Error(error))
             .map_err(|_| Error::Send("Error".to_string())) // GRCOV-LINE
     }
 
@@ -218,10 +211,11 @@ where
     /// Returns an error if the fail could not be emitted.
     ///
     pub async fn emit_fail(&mut self, error: Error) -> Result<(), Error> {
+        // Store error to stop message handling.
+        self.set_error(error.clone());
         // Send fail to parent actor.
-        //self.token.cancel();
         self.inner_sender
-            .send(InnerEvent::Fail(error.clone()))
+            .send(InnerAction::Fail(error.clone()))
             .map_err(|_| Error::Send("Error".to_string())) // GRCOV-LINE
     }
 
@@ -341,6 +335,13 @@ where
     ///
     pub(crate) fn set_error(&mut self, error: Error) {
         self.error = Some(error);
+    }
+
+    /// Clean the error of the actor.
+    /// This is used to clean the error of the actor.
+    /// 
+    pub(crate) fn clean_error(&mut self) {
+        self.error = None;
     }
 
     /// Sets the cancelation token.
