@@ -94,6 +94,23 @@ where
         (runner, actor_ref, child_sender)
     }
 
+    /// True if it's started or false if the actor is terminated
+    pub(crate) fn is_started(&self) -> bool {
+        loop {
+            match self.lifecycle {
+                ActorLifecycle::Started => {
+                    return true;
+                }
+                ActorLifecycle::Terminated => {
+                    return false;
+                }
+                _ => {
+                    continue;
+                }
+            }
+        }
+    }
+
     /// Init the actor runner.
     pub(crate) async fn init(&mut self, system: SystemRef) {
         debug!("Initializing actor {} runner.", &self.path);
