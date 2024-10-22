@@ -147,6 +147,11 @@ impl SystemRef {
         let any = Box::new(actor_ref.clone());
         actors.insert(path, any);
 
+        // Wait for the actor to start
+        loop {
+            break;
+        }
+
         Ok((actor_ref, child_sender))
     }
 
