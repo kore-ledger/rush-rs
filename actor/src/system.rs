@@ -14,7 +14,7 @@ use crate::{
     Actor, ActorPath, ActorRef, Error, Event, Handler,
 };
 
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error};
@@ -34,16 +34,8 @@ impl ActorSystem {
     /// Returns a tuple with the system reference and the system runner.
     pub fn create() -> (SystemRef, SystemRunner) {
         let (event_sender, event_receiver) = mpsc::channel(100);
-        let actors = Arc::new(RwLock::new(HashMap::new()));
-        let helpers = Arc::new(RwLock::new(HashMap::new()));
-        let senders = Arc::new(RwLock::new(Vec::new()));
         let token = CancellationToken::new();
-        let system = SystemRef::new(
-            actors.clone(),
-            helpers.clone(),
-            senders,
-            event_sender,
-        );
+        let system = SystemRef::new(event_sender);
         let runner = SystemRunner::new(token, event_receiver);
         (system, runner)
     }
@@ -52,7 +44,7 @@ impl ActorSystem {
 /// System event.
 ///
 #[derive(Debug, Clone)]
-pub enum InnerSystemEvent {
+pub enum SystemEvent {
     /// Stop the actor system.
     StopSystem,
 }
@@ -72,25 +64,18 @@ pub struct SystemRef {
     senders: Arc<RwLock<Vec<ChildSender>>>,
 
     /// The event sender.
-    event_sender: mpsc::Sender<InnerSystemEvent>,
+    event_sender: mpsc::Sender<SystemEvent>,
 }
 
 impl SystemRef {
     /// Create system reference.
     pub fn new(
-        actors: Arc<
-            RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>,
-        >,
-        helpers: Arc<
-            RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>,
-        >,
-        senders: Arc<RwLock<Vec<ChildSender>>>,
-        event_sender: mpsc::Sender<InnerSystemEvent>,
+        event_sender: mpsc::Sender<SystemEvent>,
     ) -> Self {
         SystemRef {
-            actors,
-            helpers,
-            senders,
+            actors: Arc::new(RwLock::new(HashMap::new())),
+            helpers: Arc::new(RwLock::new(HashMap::new())),
+            senders: Arc::new(RwLock::new(Vec::new())),
             event_sender,
         }
     }
@@ -128,31 +113,37 @@ impl SystemRef {
         A: Actor + Handler<A>,
     {
         // Check if the actor already exists.
-        let mut actors = self.actors.write().await;
-        if actors.contains_key(&path) {
-            error!("Actor '{}' already exists!", &path);
-            return Err(Error::Exists(path));
+        {
+            let actors = self.actors.read().await;
+            if actors.contains_key(&path) {
+                error!("Actor '{}' already exists!", &path);
+                return Err(Error::Exists(path));
+            }
         }
-
         // Create the actor runner and init it.
         let system = self.clone();
         let (mut runner, actor_ref, child_sender) =
-            ActorRunner::create(path, actor, error_helper);
-        tokio::spawn(async move {
-            runner.init(system).await;
-        });
+            ActorRunner::create(path.clone(), actor, error_helper);
+
 
         // Store the actor reference.
-        let path = actor_ref.path().clone();
         let any = Box::new(actor_ref.clone());
-        actors.insert(path, any);
+        {
+            let mut actors = self.actors.write().await;
+            actors.insert(path.clone(), any);
+        }
+        let (sender, receiver) = oneshot::channel::<bool>();
 
-        // Wait for the actor to start
-        loop {
-            break;
+        tokio::spawn(async move {
+            runner.init(system, Some(sender)).await;
+        });
+
+        if receiver.await.map_err(|_| Error::Start)? {
+            Ok((actor_ref, child_sender))
+        } else {
+            Err(Error::Start)
         }
 
-        Ok((actor_ref, child_sender))
     }
 
     /// Launches a new top level actor on th is actor system at the '/user'
@@ -261,7 +252,7 @@ impl SystemRef {
     }
 
     /// Send a system event.
-    pub async fn send_event(&self, event: InnerSystemEvent) {
+    pub async fn send_event(&self, event: SystemEvent) {
         if let Err(error) = self.event_sender.send(event).await {
             error!("Failed to send event! {}", error.to_string());
         }
@@ -319,14 +310,14 @@ pub struct SystemRunner {
     token: CancellationToken,
 
     /// The event receiver.
-    event_receiver: mpsc::Receiver<InnerSystemEvent>,
+    event_receiver: mpsc::Receiver<SystemEvent>,
 }
 
 impl SystemRunner {
     /// Create a new system runner.
     pub(crate) fn new(
         token: CancellationToken,
-        event_receiver: mpsc::Receiver<InnerSystemEvent>,
+        event_receiver: mpsc::Receiver<SystemEvent>,
     ) -> Self {
         Self {
             token,
@@ -341,7 +332,7 @@ impl SystemRunner {
             tokio::select! {
                 Some(event) = self.event_receiver.recv() => {
                     match event {
-                      InnerSystemEvent::StopSystem => {
+                        SystemEvent::StopSystem => {
                             debug!("Stopping actor system...");
                             self.token.cancel();
                         }
@@ -373,7 +364,7 @@ mod tests {
         });
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         assert!(logs_contain("Running actor system..."));
-        system.send_event(InnerSystemEvent::StopSystem).await;
+        system.send_event(SystemEvent::StopSystem).await;
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         assert!(logs_contain("Stopping actor system..."));
         assert!(logs_contain("Actor system stopped."));

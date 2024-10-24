@@ -94,25 +94,8 @@ where
         (runner, actor_ref, child_sender)
     }
 
-    /// True if it's started or false if the actor is terminated
-    pub(crate) fn is_started(&self) -> bool {
-        loop {
-            match self.lifecycle {
-                ActorLifecycle::Started => {
-                    return true;
-                }
-                ActorLifecycle::Terminated => {
-                    return false;
-                }
-                _ => {
-                    continue;
-                }
-            }
-        }
-    }
-
     /// Init the actor runner.
-    pub(crate) async fn init(&mut self, system: SystemRef) {
+    pub(crate) async fn init(&mut self, system: SystemRef, mut sender: Option<oneshot::Sender<bool>>) {
         debug!("Initializing actor {} runner.", &self.path);
 
         // Create the actor context.
@@ -154,6 +137,11 @@ where
                 // State: STARTED
                 ActorLifecycle::Started => {
                     debug!("Actor {} is started.", &self.path);
+                    if let Some(sender) = sender.take() {
+                        sender.send(true).unwrap_or_else(|err| {
+                            error!("Failed to send signal: {:?}", err);
+                        });
+                    }
                     self.run(&mut ctx).await;
                     if ctx.error().is_some() {
                         self.lifecycle = ActorLifecycle::Failed;
@@ -189,6 +177,11 @@ where
                 ActorLifecycle::Terminated => {
                     debug!("Actor {} is terminated.", &self.path);
                     ctx.system().remove_actor(&self.path.clone()).await;
+                    if let Some(sender) = sender.take() {
+                        sender.send(false).unwrap_or_else(|err| {
+                            error!("Failed to send signal: {:?}", err);
+                        });
+                    }
                     break;
                 }
             }
@@ -412,11 +405,10 @@ mod tests {
     };
     use async_trait::async_trait;
     use serde::{Deserialize, Serialize};
-    use tokio::sync::RwLock;
 
     use tracing_test::traced_test;
 
-    use std::{collections::HashMap, sync::Arc, time::Duration};
+    use std::time::Duration;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct TestMessage(ErrorMessage);
@@ -509,10 +501,8 @@ mod tests {
     #[traced_test]
     async fn test_actor_root_failed() {
         let (event_sender, _) = mpsc::channel(100);
-        let actors = Arc::new(RwLock::new(HashMap::new()));
-        let helpers = Arc::new(RwLock::new(HashMap::new()));
-        let senders = Arc::new(RwLock::new(Vec::new()));
-        let system = SystemRef::new(actors, helpers, senders, event_sender);
+        
+        let system = SystemRef::new(event_sender);
 
         let actor = TestActor { failed: false };
         let (mut runner, actor_ref, _) =
@@ -520,7 +510,7 @@ mod tests {
         let inner_system = system.clone();
         // Init the actor runner.
         tokio::spawn(async move {
-            runner.init(inner_system).await;
+            runner.init(inner_system, None).await;
         });
         tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -545,7 +535,7 @@ mod tests {
         let inner_system = system.clone();
         // Init the actor runner.
         tokio::spawn(async move {
-            runner.init(inner_system).await;
+            runner.init(inner_system, None).await;
         });
 
         tokio::time::sleep(Duration::from_secs(2)).await;
