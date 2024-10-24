@@ -3,9 +3,9 @@ output-type: lcov
 output-path: ./lcov.info
 binary-path: ./target/debug
 source-dir: .
-excl-line: ".*GRCOV-LINE$"
-excl-start: ".*GRCOV-START$"
-excl-stop: ".*GRCOV-END$"
+excl-line: .*GRCOV-LINE$
+excl-start: .*GRCOV-START$
+excl-stop: .*GRCOV-END$
 ignore-not-existing: true
 ignore:
   - "/*"
