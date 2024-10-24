@@ -755,11 +755,9 @@ mod test {
     use crate::sink::{Sink, Subscriber};
 
     use serde::{Deserialize, Serialize};
-    use tokio::sync::{mpsc, RwLock};
+    use tokio::sync::mpsc;
 
     use tracing_test::traced_test;
-
-    use std::{collections::HashMap, sync::Arc};
 
     #[derive(Debug, Clone)]
     struct TestActor {
@@ -816,10 +814,7 @@ mod test {
     #[traced_test]
     async fn test_actor() {
         let (event_sender, _event_receiver) = mpsc::channel(100);
-        let actors = Arc::new(RwLock::new(HashMap::new()));
-        let helpers = Arc::new(RwLock::new(HashMap::new()));
-        let senders = Arc::new(RwLock::new(Vec::new()));
-        let system = SystemRef::new(actors, helpers, senders, event_sender);
+        let system = SystemRef::new(event_sender);
         let actor = TestActor { counter: 0 };
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
 
