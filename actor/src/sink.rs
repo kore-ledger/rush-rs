@@ -3,6 +3,7 @@
 
 use crate::Event;
 
+use async_trait::async_trait;
 use tokio::sync::broadcast::{error::RecvError, Receiver as EventReceiver};
 
 use tracing::{debug, error};
@@ -31,7 +32,7 @@ impl<E: Event> Sink<E> {
                         "Received event: {:?}. Notify to the subscriber.",
                         event
                     );
-                    self.subscriber.notify(event);
+                    self.subscriber.notify(event).await;
                 }
                 Err(error) => {
                     error!("Error receiving event: {:?}", error);
@@ -49,6 +50,7 @@ impl<E: Event> Sink<E> {
     }
 }
 
+#[async_trait]
 pub trait Subscriber<E: Event>: Send + Sync + 'static {
-    fn notify(&self, event: E);
+    async fn notify(&self, event: E);
 }

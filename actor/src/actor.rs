@@ -803,8 +803,9 @@ mod test {
 
     pub struct TestSubscriber;
 
+    #[async_trait]
     impl Subscriber<TestEvent> for TestSubscriber {
-        fn notify(&self, event: TestEvent) {
+        async fn notify(&self, event: TestEvent) {
             debug!("Received event: {:?}", event);
             assert!(event.0 > 0);
         }

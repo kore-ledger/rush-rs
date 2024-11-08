@@ -4,7 +4,7 @@ version = { workspace = true}
 edition = { workspace = true}
 
 [dependencies]
-rusqlite = { version = "0.31.0", features = ["bundled"]}
+rusqlite = { version = "0.32.1", features = ["bundled"]}
 store = { path = "../../store" }
 tempfile = {workspace = true }
 tracing = {workspace = true }
