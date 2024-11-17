@@ -101,7 +101,6 @@ pub trait PersistentActor:
         }
     }
 
-
     /// Light persistence of an event.
     ///
     /// # Arguments
@@ -459,11 +458,7 @@ impl<P: PersistentActor> Store<P> {
     }
 
     /// Retrieve events.
-    fn events(
-        &mut self,
-        from: u64,
-        to: u64,
-    ) -> Result<Vec<P::Event>, Error> {
+    fn events(&mut self, from: u64, to: u64) -> Result<Vec<P::Event>, Error> {
         let mut events = Vec::new();
         for i in from..to {
             if let Ok(data) = self.events.get(&i.to_string()) {
@@ -1044,7 +1039,6 @@ mod tests {
         } else {
             panic!("Events not found");
         }
-
     }
 
     #[tokio::test]

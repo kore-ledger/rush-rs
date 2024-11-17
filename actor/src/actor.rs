@@ -170,7 +170,7 @@ where
     ///
     /// Returns an error if the event could not be emitted.
     ///
-    #[deprecated(since="0.5.0", note="please use `publish_event` instead")]
+    #[deprecated(since = "0.5.0", note = "please use `publish_event` instead")]
     pub async fn event(&self, event: A::Event) -> Result<(), Error> {
         self.publish_event(event).await
     }
@@ -339,7 +339,7 @@ where
 
     /// Clean the error of the actor.
     /// This is used to clean the error of the actor.
-    /// 
+    ///
     pub(crate) fn clean_error(&mut self) {
         self.error = None;
     }

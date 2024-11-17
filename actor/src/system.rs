@@ -32,7 +32,9 @@ impl ActorSystem {
     /// # Returns
     ///
     /// Returns a tuple with the system reference and the system runner.
-    pub fn create(token: Option<CancellationToken>) -> (SystemRef, SystemRunner) {
+    pub fn create(
+        token: Option<CancellationToken>,
+    ) -> (SystemRef, SystemRunner) {
         let token = if let Some(token) = token {
             token
         } else {
@@ -74,9 +76,7 @@ pub struct SystemRef {
 
 impl SystemRef {
     /// Create system reference.
-    pub fn new(
-        event_sender: mpsc::Sender<SystemEvent>,
-    ) -> Self {
+    pub fn new(event_sender: mpsc::Sender<SystemEvent>) -> Self {
         SystemRef {
             actors: Arc::new(RwLock::new(HashMap::new())),
             helpers: Arc::new(RwLock::new(HashMap::new())),
@@ -130,7 +130,6 @@ impl SystemRef {
         let (mut runner, actor_ref, child_sender) =
             ActorRunner::create(path.clone(), actor, error_helper);
 
-
         // Store the actor reference.
         let any = Box::new(actor_ref.clone());
         {
@@ -148,7 +147,6 @@ impl SystemRef {
         } else {
             Err(Error::Start)
         }
-
     }
 
     /// Launches a new top level actor on th is actor system at the '/user'

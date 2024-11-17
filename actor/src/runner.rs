@@ -95,7 +95,11 @@ where
     }
 
     /// Init the actor runner.
-    pub(crate) async fn init(&mut self, system: SystemRef, mut sender: Option<oneshot::Sender<bool>>) {
+    pub(crate) async fn init(
+        &mut self,
+        system: SystemRef,
+        mut sender: Option<oneshot::Sender<bool>>,
+    ) {
         debug!("Initializing actor {} runner.", &self.path);
 
         // Create the actor context.
@@ -266,7 +270,7 @@ where
         ctx: &mut ActorContext<A>,
     ) {
         match event {
-            InnerAction::Event( event ) => {
+            InnerAction::Event(event) => {
                 match self.event_sender.send(event.clone()) {
                     Ok(size) => {
                         debug!(
@@ -501,7 +505,7 @@ mod tests {
     #[traced_test]
     async fn test_actor_root_failed() {
         let (event_sender, _) = mpsc::channel(100);
-        
+
         let system = SystemRef::new(event_sender);
 
         let actor = TestActor { failed: false };
