@@ -967,7 +967,7 @@ mod tests {
     #[tokio::test]
     //#[traced_test]
     async fn test_store_actor() {
-        let (system, mut runner) = ActorSystem::create();
+        let (system, mut runner) = ActorSystem::create(None);
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;
@@ -1050,7 +1050,7 @@ mod tests {
     #[tokio::test]
     //#[traced_test]
     async fn test_persistent_actor() {
-        let (system, mut runner) = ActorSystem::create();
+        let (system, mut runner) = ActorSystem::create(None);
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;

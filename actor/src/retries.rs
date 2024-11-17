@@ -279,7 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_actor() {
-        let (system, mut runner) = ActorSystem::create();
+        let (system, mut runner) = ActorSystem::create(None);
 
         tokio::spawn(async move {
             runner.run().await;

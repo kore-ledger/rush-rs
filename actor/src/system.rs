@@ -32,9 +32,14 @@ impl ActorSystem {
     /// # Returns
     ///
     /// Returns a tuple with the system reference and the system runner.
-    pub fn create() -> (SystemRef, SystemRunner) {
+    pub fn create(token: Option<CancellationToken>) -> (SystemRef, SystemRunner) {
+        let token = if let Some(token) = token {
+            token
+        } else {
+            CancellationToken::new()
+        };
+
         let (event_sender, event_receiver) = mpsc::channel(100);
-        let token = CancellationToken::new();
         let system = SystemRef::new(event_sender);
         let runner = SystemRunner::new(token, event_receiver);
         (system, runner)
@@ -357,7 +362,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_stop_actor_system() {
-        let (system, mut runner) = ActorSystem::create();
+        let (system, mut runner) = ActorSystem::create(None);
 
         tokio::spawn(async move {
             runner.run().await;
@@ -372,7 +377,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_helpers() {
-        let (system, _) = ActorSystem::create();
+        let (system, _) = ActorSystem::create(None);
         let helper = TestHelper { value: 42 };
         system.add_helper("test", helper).await;
         let helper: Option<TestHelper> = system.get_helper("test").await;

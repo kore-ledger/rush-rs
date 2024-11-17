@@ -204,7 +204,7 @@ impl Handler<ChildActor> for ChildActor {
 
 #[tokio::test]
 async fn test_actor() {
-    let (system, mut runner) = ActorSystem::create();
+    let (system, mut runner) = ActorSystem::create(None);
     // Init runner.
     tokio::spawn(async move {
         runner.run().await;
@@ -231,7 +231,7 @@ async fn test_actor() {
 
 #[tokio::test]
 async fn test_actor_error() {
-    let (system, mut runner) = ActorSystem::create();
+    let (system, mut runner) = ActorSystem::create(None);
     // Init runner.
     tokio::spawn(async move {
         runner.run().await;
@@ -258,7 +258,7 @@ async fn test_actor_fault() {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 
-    let (system, mut runner) = ActorSystem::create();
+    let (system, mut runner) = ActorSystem::create(None);
     // Init runner.
     tokio::spawn(async move {
         runner.run().await;
