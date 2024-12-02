@@ -13,27 +13,21 @@ use thiserror::Error;
 /// Error type for the actor system.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum Error {
-    /// Error from another crate that needs to be treated as an Actor Error
-    #[error("Custom error: {0}.")]
-    Custom(String),
     /// An error occurred while sending a message to an actor.
     #[error("An error occurred while sending a message to actor: {0}.")]
     Send(String),
-    /// An error occurred while receiving a message from an actor.
-    #[error("An error occurred while receiving a message from {0}:{1} actor.")]
-    Receive(ActorPath, String),
+    /// An error occurred while receiving a response from an actor.
+    #[error("Actor {0} returned a response that was not expected, expected response: {1}")]
+    UnexpectedResponse(ActorPath, String),
     /// An error occurred while creating an actor.
-    #[error("An error occurred while creating an actor.")]
-    Create,
+    #[error("An error occurred while creating an actor: {0}/{1}.")]
+    Create(ActorPath, String),
     /// An error occurred while retrieving an actor.
     #[error("Actor {0} exist.")]
     Exists(ActorPath),
     /// Actor not found error.
     #[error("Actor {0} not found.")]
     NotFound(ActorPath),
-    /// An error occurred while retrieving an actor.
-    #[error("Actor {0} not exist.")]
-    NotExists(ActorPath),
     /// An error occurred while stopping an actor.
     #[error("An error occurred while stopping an actor.")]
     Stop,
@@ -58,6 +52,9 @@ pub enum Error {
     /// Error that does not compromise the operation of the system.
     #[error("Error: {0}")]
     Functional(String),
+    /// Error that does compromise the operation of the system.
+    #[error("Error: {0}")]
+    FunctionalFail(String),
     /// An error that affects the state. Contains the valid state.
     #[error("State error: {0}")]
     State(String),
@@ -65,7 +62,7 @@ pub enum Error {
     #[error("The maximum number of retries has been reached.")]
     ReTry,
     /// Can not get a helper.
-    #[error("An attempt was made to access a helper that does not exist.")]
-    NotHelper,
+    #[error("Helper {0} could not be accessed.")]
+    NotHelper(String),
 }
 // GRCOV-END

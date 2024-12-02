@@ -175,6 +175,9 @@ where
                     debug!("Actor {} is faulty.", &self.path);
                     if self.parent_sender.is_none() {
                         self.lifecycle = ActorLifecycle::Restarted;
+                    } else {
+                        // TODO aquí debería decir el padre el qué hacer.
+                        self.lifecycle = ActorLifecycle::Terminated;
                     }
                 }
                 // State: TERMINATED

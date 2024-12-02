@@ -118,7 +118,7 @@ where
                         }
 
                         if let Some(actor) =
-                            ctx.system().get_actor(ctx.path()).await
+                            ctx.reference().await
                         {
                             let actor: ActorRef<RetryActor<T>> = actor;
                             if actor.tell(RetryMessage::Retry).await.is_err() {
@@ -141,9 +141,7 @@ where
                     } else {
                         error!("Max retries reached.");
                         let _ = ctx
-                            .emit_error(Error::Functional(
-                                "Max retries reached.".to_owned(),
-                            ))
+                            .emit_error(Error::ReTry)
                             .await;
                         debug!("RetryActor end");
                         ctx.stop().await;
