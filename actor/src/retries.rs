@@ -109,27 +109,23 @@ where
                             }
                         }
 
-                        // Backoff
-                        if let Some(duration) =
-                            self.retry_strategy.next_backoff()
-                        {
-                            debug!("Backoff for {:?}", &duration);
-                            tokio::time::sleep(duration).await;
-                        }
-
                         if let Some(actor) =
                             ctx.reference().await
                         {
+                            if let Some(duration) =
+                            self.retry_strategy.next_backoff()
+                        {
                             let actor: ActorRef<RetryActor<T>> = actor;
-                            if actor.tell(RetryMessage::Retry).await.is_err() {
-                                error!("Cannot initiate retry to send message");
-                                let _ = ctx
-                                    .emit_error(Error::Send(
-                                        "Cannot initiate retry to send message"
-                                            .to_owned(),
-                                    ))
-                                    .await;
-                            }
+                            tokio::spawn(async move {
+                                debug!("Backoff for {:?}", &duration);
+                                tokio::time::sleep(duration).await;
+                                if actor.tell(RetryMessage::Retry).await.is_err() {
+                                    error!("Cannot initiate retry to send message");
+                                }
+                            }); 
+                        }
+                            
+                            
                         } else {
                             let _ = ctx
                                 .emit_error(Error::Send(
