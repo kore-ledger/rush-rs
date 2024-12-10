@@ -388,7 +388,7 @@ impl<P: PersistentActor> Store<P> {
                 Error::Store(format!("Can't serialize event: {}", e))
             })?
         };
-        self.events.put(&self.event_counter.to_string(), &bytes)
+        self.events.put(&format!("{:020}", self.event_counter), &bytes)
     }
 
     /// Persist an event and the state.
@@ -422,7 +422,7 @@ impl<P: PersistentActor> Store<P> {
         }
         self.snapshot(state)?;
         self.event_counter += 1;
-        self.events.put(&self.event_counter.to_string(), &bytes)
+        self.events.put(&format!("{:020}", self.event_counter), &bytes)
     }
 
     /// Returns the last event.
@@ -461,7 +461,7 @@ impl<P: PersistentActor> Store<P> {
     fn events(&mut self, from: u64, to: u64) -> Result<Vec<P::Event>, Error> {
         let mut events = Vec::new();
         for i in from..to {
-            if let Ok(data) = self.events.get(&i.to_string()) {
+            if let Ok(data) = self.events.get(&format!("{:020}", i)) {
                 let event: P::Event = if let Some(key_box) = &self.key_box {
                     if let Ok(key) = key_box.decrypt() {
                         let data =
@@ -520,7 +520,7 @@ impl<P: PersistentActor> Store<P> {
         } else {
             data
         };
-        self.states.put(&self.event_counter.to_string(), &bytes)
+        self.states.put(&format!("{:020}", self.event_counter), &bytes)
     }
 
     /// Recover the state.
