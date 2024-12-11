@@ -15,7 +15,7 @@ use crate::{
 use async_trait::async_trait;
 
 use std::fmt::Debug;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 /// Retry actor.
 pub struct RetryActor<T>
@@ -135,12 +135,12 @@ where
                         };
                         // Next retry
                     } else {
-                        error!("Max retries reached.");
-                        let _ = ctx
+                        warn!("Max retries reached.");
+                        if let Err(e) = ctx
                             .emit_error(Error::ReTry)
-                            .await;
-                        debug!("RetryActor end");
-                        ctx.stop().await;
+                            .await {
+                                error!("Error in emit_error {}", e);
+                            };
                     }
                 }
             }
