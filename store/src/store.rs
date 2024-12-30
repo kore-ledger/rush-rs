@@ -252,6 +252,7 @@ pub trait PersistentActor:
             self.update(state);
         } else {
             debug!("Create first snapshot");
+            
             store.tell(StoreCommand::Snapshot(self.clone())).await?;
         }
         Ok(())
@@ -636,11 +637,10 @@ impl<P: PersistentActor> Store<P> {
     ///
     fn decrypt(&self, key: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         let cipher = ChaCha20Poly1305::new(key.into());
-        let nonce: [u8; 12] = ciphertext[..NONCE_SIZE]
-            .try_into()
-            .map_err(|e| Error::Store(format!("Nonce error: {}", e)))?;
+        let nonce = ciphertext[..NONCE_SIZE].to_vec();
         let nonce = Nonce::from_slice(&nonce);
         let ciphertext = &ciphertext[NONCE_SIZE..];
+
         let plaintext = cipher
             .decrypt(nonce, ciphertext)
             .map_err(|e| Error::Store(format!("Decrypt error: {}", e)))?;
@@ -756,7 +756,9 @@ where
                     debug!("Recovered state: {:?}", state);
                     Ok(StoreResponse::State(state))
                 }
-                Err(e) => Ok(StoreResponse::Error(e)),
+                Err(e) => {
+                    Ok(StoreResponse::Error(e))
+                },
             },
             StoreCommand::GetEvents { from, to } => {
                 let events = self.events(from, to).map_err(|_| {
