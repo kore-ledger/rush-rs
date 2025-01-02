@@ -1,5 +1,5 @@
-// Copyright 2024 Antonio Estévez
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: Apache-2.0
 
 //! # SQLite database backend.
 //!

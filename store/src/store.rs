@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: Apache-2.0
 
 //! # Store module.
@@ -49,7 +49,7 @@ pub trait PersistentActor:
     ///
     /// - event: The event to apply.
     ///
-    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> ;
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError>;
 
     /// Recover the state.
     ///
@@ -116,11 +116,11 @@ pub trait PersistentActor:
             StoreResponse::Error(error) => {
                 error!("");
                 Err(ActorError::Store(error.to_string()))
-            },
+            }
             _ => Err(ActorError::UnexpectedResponse(
                 ActorPath::from(format!("{}/store", ctx.path().clone())),
                 "StoreResponse::Persisted".to_owned(),
-            ))
+            )),
         }
     }
 
@@ -163,21 +163,20 @@ pub trait PersistentActor:
         }
 
         let response = store
-        .ask(StoreCommand::PersistLight(event.clone(), self.clone()))
-        .await
-        .map_err(|e| ActorError::Store(e.to_string()))?;
+            .ask(StoreCommand::PersistLight(event.clone(), self.clone()))
+            .await
+            .map_err(|e| ActorError::Store(e.to_string()))?;
 
-    
         match response {
             StoreResponse::Persisted => Ok(()),
             StoreResponse::Error(error) => {
                 error!("");
                 Err(ActorError::Store(error.to_string()))
-            },
+            }
             _ => Err(ActorError::UnexpectedResponse(
                 ActorPath::from(format!("{}/store", ctx.path().clone())),
                 "StoreResponse::Persisted".to_owned(),
-            ))
+            )),
         }
     }
 
@@ -290,7 +289,7 @@ pub trait PersistentActor:
             self.update(state);
         } else {
             debug!("Create first snapshot");
-            
+
             store.tell(StoreCommand::Snapshot(self.clone())).await?;
         }
         Ok(())
@@ -427,7 +426,8 @@ impl<P: PersistentActor> Store<P> {
                 Error::Store(format!("Can't serialize event: {}", e))
             })?
         };
-        self.events.put(&format!("{:020}", self.event_counter), &bytes)
+        self.events
+            .put(&format!("{:020}", self.event_counter), &bytes)
     }
 
     /// Persist an event and the state.
@@ -461,7 +461,8 @@ impl<P: PersistentActor> Store<P> {
         }
         self.snapshot(state)?;
         self.event_counter += 1;
-        self.events.put(&format!("{:020}", self.event_counter), &bytes)
+        self.events
+            .put(&format!("{:020}", self.event_counter), &bytes)
     }
 
     /// Returns the last event.
@@ -559,7 +560,8 @@ impl<P: PersistentActor> Store<P> {
         } else {
             data
         };
-        self.states.put(&format!("{:020}", self.event_counter), &bytes)
+        self.states
+            .put(&format!("{:020}", self.event_counter), &bytes)
     }
 
     /// Recover the state.
@@ -591,7 +593,9 @@ impl<P: PersistentActor> Store<P> {
             // Recover events from the last state.
             let events = self.events(self.event_counter, u64::MAX)?;
             for event in events {
-                state.apply(&event).map_err(|e| Error::Store(e.to_string()))?;
+                state
+                    .apply(&event)
+                    .map_err(|e| Error::Store(e.to_string()))?;
                 self.event_counter += 1;
             }
             debug!("Recovered state: {:?}", state);
@@ -653,7 +657,9 @@ impl<P: PersistentActor> Store<P> {
                     bincode::deserialize(&bytes).map_err(|e| {
                         Error::Store(format!("Can't deserialize event: {}", e))
                     })?;
-                state.apply(&event).map_err(|e| Error::Store(e.to_string()))?;
+                state
+                    .apply(&event)
+                    .map_err(|e| Error::Store(e.to_string()))?;
             }
         }
         Ok(None)
@@ -794,9 +800,7 @@ where
                     debug!("Recovered state: {:?}", state);
                     Ok(StoreResponse::State(state))
                 }
-                Err(e) => {
-                    Ok(StoreResponse::Error(e))
-                },
+                Err(e) => Ok(StoreResponse::Error(e)),
             },
             StoreCommand::GetEvents { from, to } => {
                 let events = self.events(from, to).map_err(|_| {

@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: Apache-2.0
 
 //! # Simplified actor model
@@ -43,4 +43,4 @@ pub use supervision::{
     ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
     RetryStrategy, Strategy, SupervisionStrategy,
 };
-pub use system::{ActorSystem, SystemRef, SystemRunner, SystemEvent};
+pub use system::{ActorSystem, SystemEvent, SystemRef, SystemRunner};

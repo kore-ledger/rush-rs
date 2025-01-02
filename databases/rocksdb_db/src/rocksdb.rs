@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: Apache-2.0
 
 //! RocksDB store implementation.
@@ -9,7 +9,9 @@ use store::{
     Error,
 };
 
-use rocksdb::{ColumnFamilyDescriptor, DBIteratorWithThreadMode, IteratorMode, Options, DB};
+use rocksdb::{
+    ColumnFamilyDescriptor, DBIteratorWithThreadMode, IteratorMode, Options, DB,
+};
 
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
@@ -30,18 +32,18 @@ impl RocksDbManager {
     pub fn new(path: &str) -> Self {
         let mut options = Options::default();
         options.create_if_missing(true);
-        
+
         let cfs = match DB::list_cf(&options, path) {
             Ok(cf_names) => cf_names,
             Err(_) => vec!["default".to_string()], // Si la base de datos no existe, usamos solo `default`
         };
-    
+
         // Crear descriptores para cada column family
         let cf_descriptors: Vec<_> = cfs
             .iter()
             .map(|cf| ColumnFamilyDescriptor::new(cf, Options::default()))
             .collect();
-    
+
         // Abrir la base de datos con las column families existentes
         let db = DB::open_cf_descriptors(&options, path, cf_descriptors)
             .expect("Cannot open the database with existing column families.");

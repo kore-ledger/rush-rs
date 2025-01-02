@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Event;

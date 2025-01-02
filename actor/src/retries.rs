@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: Apache-2.0
 
 //! Retries module.
@@ -109,23 +109,23 @@ where
                             }
                         }
 
-                        if let Some(actor) =
-                            ctx.reference().await
-                        {
+                        if let Some(actor) = ctx.reference().await {
                             if let Some(duration) =
-                            self.retry_strategy.next_backoff()
-                        {
-                            let actor: ActorRef<RetryActor<T>> = actor;
-                            tokio::spawn(async move {
-                                debug!("Backoff for {:?}", &duration);
-                                tokio::time::sleep(duration).await;
-                                if actor.tell(RetryMessage::Retry).await.is_err() {
-                                    error!("Cannot initiate retry to send message");
-                                }
-                            }); 
-                        }
-                            
-                            
+                                self.retry_strategy.next_backoff()
+                            {
+                                let actor: ActorRef<RetryActor<T>> = actor;
+                                tokio::spawn(async move {
+                                    debug!("Backoff for {:?}", &duration);
+                                    tokio::time::sleep(duration).await;
+                                    if actor
+                                        .tell(RetryMessage::Retry)
+                                        .await
+                                        .is_err()
+                                    {
+                                        error!("Cannot initiate retry to send message");
+                                    }
+                                });
+                            }
                         } else {
                             let _ = ctx
                                 .emit_error(Error::Send(
@@ -136,11 +136,9 @@ where
                         // Next retry
                     } else {
                         warn!("Max retries reached.");
-                        if let Err(e) = ctx
-                            .emit_error(Error::ReTry)
-                            .await {
-                                error!("Error in emit_error {}", e);
-                            };
+                        if let Err(e) = ctx.emit_error(Error::ReTry).await {
+                            error!("Error in emit_error {}", e);
+                        };
                     }
                 }
             }
