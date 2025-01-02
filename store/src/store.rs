@@ -49,13 +49,21 @@ pub trait PersistentActor:
     ///
     /// - event: The event to apply.
     ///
-    fn apply(&mut self, event: &Self::Event);
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> ;
 
     /// Recover the state.
     ///
     /// # Arguments
     ///
     /// - state: The recovered state.
+    ///
+    /// # Returns
+    ///
+    /// The result of the operation.
+    ///
+    /// # Errors
+    ///
+    /// An error if the operation failed.
     ///
     fn update(&mut self, state: Self) {
         *self = state;
@@ -89,15 +97,30 @@ pub trait PersistentActor:
                 ))
             }
         };
+
+        let prev_state = self.clone();
+
+        if let Err(e) = self.apply(event) {
+            error!("");
+            self.update(prev_state);
+            return Err(e);
+        }
+
         let response = store
             .ask(StoreCommand::Persist(event.clone()))
             .await
             .map_err(|e| ActorError::Store(e.to_string()))?;
-        if let StoreResponse::Persisted = response {
-            self.apply(event);
-            Ok(())
-        } else {
-            Err(ActorError::Store("Can't persist event".to_string()))
+
+        match response {
+            StoreResponse::Persisted => Ok(()),
+            StoreResponse::Error(error) => {
+                error!("");
+                Err(ActorError::Store(error.to_string()))
+            },
+            _ => Err(ActorError::UnexpectedResponse(
+                ActorPath::from(format!("{}/store", ctx.path().clone())),
+                "StoreResponse::Persisted".to_owned(),
+            ))
         }
     }
 
@@ -120,7 +143,6 @@ pub trait PersistentActor:
     async fn persist_light(
         &mut self,
         event: &Self::Event,
-        state: &Self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         let store = match ctx.get_child::<Store<Self>>("store").await {
@@ -131,15 +153,31 @@ pub trait PersistentActor:
                 ))
             }
         };
+
+        let prev_state = self.clone();
+
+        if let Err(e) = self.apply(event) {
+            error!("");
+            self.update(prev_state);
+            return Err(e);
+        }
+
         let response = store
-            .ask(StoreCommand::PersistLight(event.clone(), state.clone()))
-            .await
-            .map_err(|e| ActorError::Store(e.to_string()))?;
-        if let StoreResponse::Persisted = response {
-            self.apply(event);
-            Ok(())
-        } else {
-            Err(ActorError::Store("Can't persist event".to_string()))
+        .ask(StoreCommand::PersistLight(event.clone(), self.clone()))
+        .await
+        .map_err(|e| ActorError::Store(e.to_string()))?;
+
+    
+        match response {
+            StoreResponse::Persisted => Ok(()),
+            StoreResponse::Error(error) => {
+                error!("");
+                Err(ActorError::Store(error.to_string()))
+            },
+            _ => Err(ActorError::UnexpectedResponse(
+                ActorPath::from(format!("{}/store", ctx.path().clone())),
+                "StoreResponse::Persisted".to_owned(),
+            ))
         }
     }
 
@@ -553,7 +591,7 @@ impl<P: PersistentActor> Store<P> {
             // Recover events from the last state.
             let events = self.events(self.event_counter, u64::MAX)?;
             for event in events {
-                state.apply(&event);
+                state.apply(&event).map_err(|e| Error::Store(e.to_string()))?;
                 self.event_counter += 1;
             }
             debug!("Recovered state: {:?}", state);
@@ -615,7 +653,7 @@ impl<P: PersistentActor> Store<P> {
                     bincode::deserialize(&bytes).map_err(|e| {
                         Error::Store(format!("Can't deserialize event: {}", e))
                     })?;
-                state.apply(&event);
+                state.apply(&event).map_err(|e| Error::Store(e.to_string()))?;
             }
         }
         Ok(None)
@@ -894,9 +932,10 @@ mod tests {
 
     #[async_trait]
     impl PersistentActor for TestActor {
-        fn apply(&mut self, event: &Self::Event) {
+        fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
             self.version += 1;
             self.value += event.0;
+            Ok(())
         }
     }
 
@@ -987,7 +1026,7 @@ mod tests {
             .tell(StoreCommand::Persist(TestEvent(10)))
             .await
             .unwrap();
-        actor.apply(&TestEvent(10));
+        actor.apply(&TestEvent(10)).unwrap();
         store
             .tell(StoreCommand::Snapshot(actor.clone()))
             .await
@@ -996,7 +1035,7 @@ mod tests {
             .tell(StoreCommand::Persist(TestEvent(10)))
             .await
             .unwrap();
-        actor.apply(&TestEvent(10));
+        actor.apply(&TestEvent(10)).unwrap();
         let response = store.ask(StoreCommand::Recover).await.unwrap();
         if let StoreResponse::State(Some(state)) = response {
             assert_eq!(state.value, actor.value);

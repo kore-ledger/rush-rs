@@ -6,7 +6,7 @@ use crate::Event;
 use async_trait::async_trait;
 use tokio::sync::broadcast::{error::RecvError, Receiver as EventReceiver};
 
-use tracing::{debug, error};
+use tracing::debug;
 
 pub struct Sink<E: Event> {
     subscriber: Box<dyn Subscriber<E>>,
@@ -35,7 +35,6 @@ impl<E: Event> Sink<E> {
                     self.subscriber.notify(event).await;
                 }
                 Err(error) => {
-                    error!("Error receiving event: {:?}", error);
                     match error {
                         RecvError::Closed => break,
                         RecvError::Lagged(_) => {
