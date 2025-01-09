@@ -122,7 +122,7 @@ where
                                         .await
                                         .is_err()
                                     {
-                                        error!("Cannot initiate retry to send message");
+                                        warn!("Cannot initiate retry to send message");
                                     }
                                 });
                             }

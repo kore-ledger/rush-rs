@@ -254,7 +254,7 @@ impl<'a> RocksDbIterator<'a> {
     }
 }
 
-impl<'a> Iterator for RocksDbIterator<'a> {
+impl Iterator for RocksDbIterator<'_> {
     type Item = (String, Vec<u8>);
 
     fn next(&mut self) -> Option<Self::Item> {

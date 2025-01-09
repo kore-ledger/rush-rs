@@ -5,7 +5,7 @@ edition = { workspace = true}
 
 
 [dependencies]
-rocksdb = "0.22"
+rocksdb = "0.23.0"
 store = { path = "../../store" }
 tempfile = {workspace = true }
 tracing = {workspace = true }
