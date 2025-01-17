@@ -111,7 +111,7 @@ impl Collection for RocksDbStore {
                 .map_err(|e| Error::Get(format!("{:?}", e)))?;
             match result {
                 Some(value) => Ok(value),
-                _ => Err(Error::EntryNotFound("None".to_owned())),
+                _ => Err(Error::EntryNotFound("Query returned no rows".to_owned())),
             }
         } else {
             Err(Error::Store(
