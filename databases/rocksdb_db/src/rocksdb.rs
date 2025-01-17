@@ -111,7 +111,7 @@ impl Collection for RocksDbStore {
                 .map_err(|e| Error::Get(format!("{:?}", e)))?;
             match result {
                 Some(value) => Ok(value),
-                _ => Err(Error::EntryNotFound),
+                _ => Err(Error::EntryNotFound("None".to_owned())),
             }
         } else {
             Err(Error::Store(
@@ -151,7 +151,7 @@ impl Collection for RocksDbStore {
             let iter = self.store.iterator_cf(&handle, IteratorMode::Start);
             for (key, _) in iter.flatten() {
                 let key = String::from_utf8(key.to_vec()).map_err(|e| {
-                    Error::Store("Can not convert key to string.".to_owned())
+                    Error::Store(format!("Can not convert key to string: {}", e))
                 })?;
                 if key.starts_with(&self.prefix) {
                     self.store.delete_cf(&handle, key)

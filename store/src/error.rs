@@ -17,8 +17,8 @@ pub enum Error {
     #[error("Get error: {0}")]
     Get(String),
     /// Entry not found error.
-    #[error("Entry not found.")]
-    EntryNotFound,
+    #[error("Entry not found: {0}")]
+    EntryNotFound(String),
     /// Store  Error.
     #[error("Store error: {0}")]
     Store(String),

@@ -15,27 +15,54 @@ use store::{
 
 use rusqlite::{params, Connection, OpenFlags, Result as SQLiteResult};
 
-use std::path::Path;
+use std::{fs, path::Path};
 use std::sync::{Arc, Mutex};
+
+pub fn create_temp_dir() -> String {
+    let path = temp_dir();
+
+    if fs::metadata(&path).is_err() {
+        fs::create_dir_all(&path).unwrap();
+    }
+    path
+}
+
+fn temp_dir() -> String {
+    let dir =
+        tempfile::tempdir().expect("Can not create temporal directory.");
+    dir.path().to_str().unwrap().to_owned()
+}
 
 /// SQLite database manager.
 #[derive(Clone)]
 pub struct SqliteManager {
-    path: String,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SqliteManager {
     /// Create a new SQLite database manager.
     pub fn new(path: &str) -> Self {
+        
+        let conn = open(format!("{}/database.db", path)).map_err(|e| {
+            Error::CreateStore(format!("fail SQLite open connection: {}", e))
+        }).expect("Cannot open the database ");
+
         Self {
-            path: format!("{}/database.db",path.to_owned()),
+            conn: Arc::new(Mutex::new(conn))
         }
     }
 }
 
 impl Default for SqliteManager {
     fn default() -> Self {
-        Self::new(":memory:")
+        let path = format!("{}/database.db", create_temp_dir());
+        let conn = open(&path).map_err(|e| {
+            Error::CreateStore(format!("fail SQLite open connection: {}", e))
+        }).expect("Cannot open the database ");
+
+        Self {
+            conn: Arc::new(Mutex::new(conn))
+        }
     }
 }
 
@@ -45,22 +72,23 @@ impl DbManager<SqliteCollection> for SqliteManager {
         identifier: &str,
         prefix: &str,
     ) -> Result<SqliteCollection, Error> {
-        // Open a connection to the database.
-        let conn = open(&self.path).map_err(|e| {
-            Error::CreateStore(format!("fail SQLite open connection: {}", e))
-        })?;
-
+        
         // Create statement to create a table.
         let stmt = format!(
             "CREATE TABLE IF NOT EXISTS {} (prefix TEXT NOT NULL, sn TEXT NOT NULL, value \
             BLOB NOT NULL, PRIMARY KEY (prefix, sn))",
             identifier
         );
-        conn.execute(stmt.as_str(), ()).map_err(|e| {
-            Error::CreateStore("fail SQLite create table".to_owned())
-        })?;
 
-        Ok(SqliteCollection::new(conn, identifier, prefix))
+        {
+            let conn = self.conn.lock().expect("open connection");
+            
+            conn.execute(stmt.as_str(), ()).map_err(|e| {
+                Error::CreateStore(format!("fail SQLite create table: {}", e))
+            })?;
+        }
+
+        Ok(SqliteCollection::new(self.conn.clone(), identifier, prefix))
     }
 }
 
@@ -73,9 +101,9 @@ pub struct SqliteCollection {
 
 impl SqliteCollection {
     /// Create a new SQLite collection.
-    pub fn new(conn: Connection, table: &str, prefix: &str) -> Self {
+    pub fn new(conn: Arc<Mutex<Connection>>, table: &str, prefix: &str) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            conn,
             table: table.to_owned(),
             prefix: prefix.to_owned(),
         }
@@ -108,14 +136,14 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| Error::Store("sqlite open connection".to_owned()))?;
+            .map_err(|e| Error::Store(format!("sqlite open connection: {}", e)))?;
         let query = format!(
             "SELECT value FROM {} WHERE prefix = ?1 AND sn = ?2",
             &self.table
         );
         let row: Vec<u8> = conn
             .query_row(&query, params![self.prefix, key], |row| row.get(0))
-            .map_err(|e| Error::EntryNotFound)?;
+            .map_err(|e| Error::EntryNotFound(e.to_string()))?;
 
         Ok(row)
     }
@@ -124,13 +152,13 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| Error::Store("sqlite open connection".to_owned()))?;
+            .map_err(|e| Error::Store(format!("sqlite open connection: {}", e)))?;
         let stmt = format!(
             "INSERT OR REPLACE INTO {} (prefix, sn, value) VALUES (?1, ?2, ?3)",
             &self.table
         );
         conn.execute(&stmt, params![self.prefix, key, data])
-            .map_err(|e| Error::Store("sqlite insert error".to_owned()))?;
+            .map_err(|e| Error::Store(format!("sqlite insert error: {}", e)))?;
         Ok(())
     }
 
@@ -138,13 +166,13 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| Error::Store("SQLITE open connection".to_owned()))?;
+            .map_err(|e| Error::Store(format!("SQLITE open connection: {}", e)))?;
         let stmt = format!(
             "DELETE FROM {} WHERE prefix = ?1 AND sn = ?2",
             &self.table
         );
         conn.execute(&stmt, params![self.prefix, key])
-            .map_err(|e| Error::EntryNotFound)?;
+            .map_err(|e| Error::EntryNotFound(e.to_string()))?;
         Ok(())
     }
 
@@ -152,10 +180,10 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|e| Error::Store("SQLITE open connection".to_owned()))?;
+            .map_err(|e| Error::Store(format!("SQLITE open connection: {}", e)))?;
         let stmt = format!("DELETE FROM {} WHERE prefix = ?1", &self.table);
         conn.execute(&stmt, params![self.prefix])
-            .map_err(|e| Error::Store("SQLITE purge error".to_owned()))?;
+            .map_err(|e| Error::Store(format!("SQLITE purge error: {}", e)))?;
         Ok(())
     }
 
