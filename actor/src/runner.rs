@@ -459,7 +459,7 @@ mod tests {
             _ctx: &mut ActorContext<Self>,
         ) -> Result<(), Error> {
             if self.failed {
-                Err(Error::Start)
+                Err(Error::Start("PreStart failed".to_owned()))
             } else {
                 Ok(())
             }

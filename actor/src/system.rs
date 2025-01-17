@@ -142,10 +142,10 @@ impl SystemRef {
             runner.init(system, Some(sender)).await;
         });
 
-        if receiver.await.map_err(|_| Error::Start)? {
+        if receiver.await.map_err(|e| Error::Start(e.to_string()))? {
             Ok((actor_ref, child_sender))
         } else {
-            Err(Error::Start)
+            Err(Error::Start(format!("Runner can not init {}", path)))
         }
     }
 

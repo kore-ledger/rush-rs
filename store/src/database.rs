@@ -176,7 +176,7 @@ pub trait Collection: Sync + Send + 'static {
                 let mut iter = iter.peekable();
                 loop {
                     let Some((current_key, _)) = iter.peek() else {
-                        return Err(Error::EntryNotFound);
+                        return Err(Error::EntryNotFound("None".to_owned()));
                     };
                     if current_key == &key {
                         break;
@@ -241,7 +241,7 @@ macro_rules! test_store_trait {
                     manager.create_collection("test", "test").unwrap();
                 store.put("key", b"value").unwrap();
                 store.del("key").unwrap();
-                assert_eq!(store.get("key"), Err(Error::EntryNotFound));
+                assert_eq!(store.get("key"), Err(Error::EntryNotFound("Query returned no rows".to_owned())));
                 assert!(manager.stop().is_ok())
             }
 
@@ -345,9 +345,9 @@ macro_rules! test_store_trait {
                 assert_eq!(store.get("key2"), Ok(b"value2".to_vec()));
                 assert_eq!(store.get("key3"), Ok(b"value3".to_vec()));
                 store.purge().unwrap();
-                assert_eq!(store.get("key1"), Err(Error::EntryNotFound));
-                assert_eq!(store.get("key2"), Err(Error::EntryNotFound));
-                assert_eq!(store.get("key3"), Err(Error::EntryNotFound));
+                assert_eq!(store.get("key1"), Err(Error::EntryNotFound("Query returned no rows".to_owned())));
+                assert_eq!(store.get("key2"), Err(Error::EntryNotFound("Query returned no rows".to_owned())));
+                assert_eq!(store.get("key3"), Err(Error::EntryNotFound("Query returned no rows".to_owned())));
                 assert!(manager.stop().is_ok())
             }
         }
