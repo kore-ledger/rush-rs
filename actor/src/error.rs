@@ -32,8 +32,8 @@ pub enum Error {
     #[error("An error occurred while stopping an actor.")]
     Stop,
     /// An error occurred while starting the actor system.
-    #[error("An error occurred while starting the actor system.")]
-    Start,
+    #[error("An error occurred while starting the actor system: {0}")]
+    Start(String),
     /// An error occurred while sending an envent to event bus.
     #[error("An error occurred while sending an event to event bus.")]
     SendEvent,

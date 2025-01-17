@@ -28,7 +28,7 @@ impl SqliteManager {
     /// Create a new SQLite database manager.
     pub fn new(path: &str) -> Self {
         Self {
-            path: path.to_owned(),
+            path: format!("{}/database.db",path.to_owned()),
         }
     }
 }
@@ -46,8 +46,8 @@ impl DbManager<SqliteCollection> for SqliteManager {
         prefix: &str,
     ) -> Result<SqliteCollection, Error> {
         // Open a connection to the database.
-        let conn = open(&self.path).map_err(|_| {
-            Error::CreateStore("fail SQLite open connection".to_owned())
+        let conn = open(&self.path).map_err(|e| {
+            Error::CreateStore(format!("fail SQLite open connection: {}", e))
         })?;
 
         // Create statement to create a table.
@@ -56,7 +56,7 @@ impl DbManager<SqliteCollection> for SqliteManager {
             BLOB NOT NULL, PRIMARY KEY (prefix, sn))",
             identifier
         );
-        conn.execute(stmt.as_str(), ()).map_err(|_| {
+        conn.execute(stmt.as_str(), ()).map_err(|e| {
             Error::CreateStore("fail SQLite create table".to_owned())
         })?;
 
@@ -108,14 +108,14 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
+            .map_err(|e| Error::Store("sqlite open connection".to_owned()))?;
         let query = format!(
             "SELECT value FROM {} WHERE prefix = ?1 AND sn = ?2",
             &self.table
         );
         let row: Vec<u8> = conn
             .query_row(&query, params![self.prefix, key], |row| row.get(0))
-            .map_err(|_| Error::EntryNotFound)?;
+            .map_err(|e| Error::EntryNotFound)?;
 
         Ok(row)
     }
@@ -124,13 +124,13 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|_| Error::Store("sqlite open connection".to_owned()))?;
+            .map_err(|e| Error::Store("sqlite open connection".to_owned()))?;
         let stmt = format!(
             "INSERT OR REPLACE INTO {} (prefix, sn, value) VALUES (?1, ?2, ?3)",
             &self.table
         );
         conn.execute(&stmt, params![self.prefix, key, data])
-            .map_err(|_| Error::Store("sqlite insert error".to_owned()))?;
+            .map_err(|e| Error::Store("sqlite insert error".to_owned()))?;
         Ok(())
     }
 
@@ -138,13 +138,13 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|_| Error::Store("SQLITE open connection".to_owned()))?;
+            .map_err(|e| Error::Store("SQLITE open connection".to_owned()))?;
         let stmt = format!(
             "DELETE FROM {} WHERE prefix = ?1 AND sn = ?2",
             &self.table
         );
         conn.execute(&stmt, params![self.prefix, key])
-            .map_err(|_| Error::EntryNotFound)?;
+            .map_err(|e| Error::EntryNotFound)?;
         Ok(())
     }
 
@@ -152,10 +152,10 @@ impl Collection for SqliteCollection {
         let conn = self
             .conn
             .lock()
-            .map_err(|_| Error::Store("SQLITE open connection".to_owned()))?;
+            .map_err(|e| Error::Store("SQLITE open connection".to_owned()))?;
         let stmt = format!("DELETE FROM {} WHERE prefix = ?1", &self.table);
         conn.execute(&stmt, params![self.prefix])
-            .map_err(|_| Error::Store("SQLITE purge error".to_owned()))?;
+            .map_err(|e| Error::Store("SQLITE purge error".to_owned()))?;
         Ok(())
     }
 
@@ -192,18 +192,18 @@ impl Iterator for SQLiteIterator<'_> {
 /// Open a SQLite database connection.
 pub fn open<P: AsRef<Path>>(path: P) -> Result<Connection, Error> {
     let path = path.as_ref();
-    let mut flags = OpenFlags::default();
-    flags.insert(OpenFlags::SQLITE_OPEN_READ_WRITE);
-    flags.insert(OpenFlags::SQLITE_OPEN_CREATE);
+    let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
     let conn = Connection::open_with_flags(path, flags)
-        .map_err(|_| Error::Store("SQLite fail open connection".to_owned()))?;
+        .map_err(|e| Error::Store(format!("SQLite failed to open connection: {}", e)))?;
+    
     conn.execute_batch(
         "
         PRAGMA journal_mode=WAL;
         PRAGMA synchronous=NORMAL;
         ",
     )
-    .map_err(|_| Error::Store("SQListe fail execute batch".to_owned()))?;
+    .map_err(|e| Error::Store(format!("SQLite failed to execute batch: {}", e)))?;
+    
     Ok(conn)
 }
 

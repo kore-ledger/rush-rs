@@ -153,7 +153,7 @@ where
     pub async fn publish_event(&self, event: A::Event) -> Result<(), Error> {
         self.inner_sender
             .send(InnerAction::Event(event))
-            .map_err(|_| Error::SendEvent) // GRCOV-LINE
+            .map_err(|e| Error::SendEvent) // GRCOV-LINE
     }
 
     /// Emits an event to inner handler.
@@ -192,7 +192,7 @@ where
     pub async fn emit_error(&mut self, error: Error) -> Result<(), Error> {
         self.inner_sender
             .send(InnerAction::Error(error))
-            .map_err(|_| Error::Send("Error".to_string())) // GRCOV-LINE
+            .map_err(|e| Error::Send("Error".to_string())) // GRCOV-LINE
     }
 
     /// Emits a fail.
@@ -216,7 +216,7 @@ where
         // Send fail to parent actor.
         self.inner_sender
             .send(InnerAction::Fail(error.clone()))
-            .map_err(|_| Error::Send("Error".to_string())) // GRCOV-LINE
+            .map_err(|e| Error::Send("Error".to_string())) // GRCOV-LINE
     }
 
     /// Stop the actor.

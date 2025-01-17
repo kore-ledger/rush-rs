@@ -370,7 +370,7 @@ impl<P: PersistentActor> Store<P> {
         let key_box = match password {
             Some(key) => {
                 let mut key_box = EncryptedMem::new();
-                key_box.encrypt(&key).map_err(|_| {
+                key_box.encrypt(&key).map_err(|e| {
                     Error::Store("Can't encrypt password.".to_owned())
                 })?;
                 Some(key_box)
@@ -803,7 +803,7 @@ where
                 Err(e) => Ok(StoreResponse::Error(e)),
             },
             StoreCommand::GetEvents { from, to } => {
-                let events = self.events(from, to).map_err(|_| {
+                let events = self.events(from, to).map_err(|e| {
                     ActorError::Store("Unable to get events range.".to_owned())
                 })?;
                 Ok(StoreResponse::Events(events))
@@ -811,7 +811,7 @@ where
             // Find a state.
             StoreCommand::Find(filter) => {
                 let state =
-                    self.find(filter).map_err(|_| ActorError::EntryNotFound)?;
+                    self.find(filter).map_err(|e| ActorError::EntryNotFound)?;
                 Ok(StoreResponse::State(state))
             }
             // Get the last event.
@@ -837,7 +837,7 @@ where
             // Get the last events from a number of counter.
             StoreCommand::LastEventsFrom(from) => {
                 let events =
-                    self.events(from, self.event_counter).map_err(|_| {
+                    self.events(from, self.event_counter).map_err(|e| {
                         ActorError::Store(
                             "Unable to get the latest events".to_owned(),
                         )

@@ -13,13 +13,13 @@ use rocksdb::{
     ColumnFamilyDescriptor, DBIteratorWithThreadMode, IteratorMode, Options, DB,
 };
 
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::sync::Arc;
 
 /// RocksDb manager.
 #[derive(Clone)]
 pub struct RocksDbManager {
     opts: Options,
-    db: Arc<RwLock<DB>>,
+    db: Arc<DB>,
 }
 
 impl RocksDbManager {
@@ -50,7 +50,7 @@ impl RocksDbManager {
 
         Self {
             opts: options,
-            db: Arc::new(RwLock::new(db)),
+            db: Arc::new(db),
         }
     }
 }
@@ -63,7 +63,7 @@ impl Default for RocksDbManager {
             DB::open_default(dir.path()).expect("Can not create the database.");
         Self {
             opts: Options::default(),
-            db: Arc::new(RwLock::new(db)),
+            db: Arc::new(db),
         }
     }
 }
@@ -74,12 +74,8 @@ impl DbManager<RocksDbStore> for RocksDbManager {
         name: &str,
         prefix: &str,
     ) -> Result<RocksDbStore, Error> {
-        let mut db = self
-            .db
-            .write()
-            .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
-        if db.cf_handle(name).is_none() {
-            db.create_cf(name, &self.opts)
+        if self.db.cf_handle(name).is_none() {
+            self.db.create_cf(name, &self.opts)
                 .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
         }
         Ok(RocksDbStore {
@@ -90,11 +86,7 @@ impl DbManager<RocksDbStore> for RocksDbManager {
     }
 
     fn stop(self) -> Result<(), Error> {
-        let db = self
-            .db
-            .read()
-            .map_err(|e| Error::Store(format!("{:?}", e)))?;
-        db.flush().map_err(|e| Error::Store(format!("{:?}", e)))
+        self.db.flush().map_err(|e| Error::Store(format!("{:?}", e)))
     }
 }
 
@@ -102,7 +94,7 @@ impl DbManager<RocksDbStore> for RocksDbManager {
 pub struct RocksDbStore {
     name: String,
     prefix: String,
-    store: Arc<RwLock<DB>>,
+    store: Arc<DB>,
     //column: ColumnFamily,
 }
 
@@ -112,14 +104,10 @@ impl Collection for RocksDbStore {
     }
 
     fn get(&self, key: &str) -> Result<Vec<u8>, Error> {
-        let db = self
-            .store
-            .read()
-            .map_err(|e| Error::Get(format!("{:?}", e)))?;
-        if let Some(handle) = db.cf_handle(&self.name) {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
-            let result = db
-                .get_cf(handle, key)
+            let result = self.store
+                .get_cf(&handle, key)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?;
             match result {
                 Some(value) => Ok(value),
@@ -133,14 +121,10 @@ impl Collection for RocksDbStore {
     }
 
     fn put(&mut self, key: &str, data: &[u8]) -> Result<(), Error> {
-        let db = self
-            .store
-            .read()
-            .map_err(|e| Error::Get(format!("{:?}", e)))?;
-        if let Some(handle) = db.cf_handle(&self.name) {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
-            Ok(db
-                .put_cf(handle, key, data)
+            Ok(self.store
+                .put_cf(&handle, key, data)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
             Err(Error::Store(
@@ -150,14 +134,10 @@ impl Collection for RocksDbStore {
     }
 
     fn del(&mut self, key: &str) -> Result<(), Error> {
-        let db = self
-            .store
-            .read()
-            .map_err(|e| Error::Get(format!("{:?}", e)))?;
-        if let Some(handle) = db.cf_handle(&self.name) {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
-            Ok(db
-                .delete_cf(handle, key)
+            Ok(self.store
+                .delete_cf(&handle, key)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
             Err(Error::Store(
@@ -167,18 +147,14 @@ impl Collection for RocksDbStore {
     }
 
     fn purge(&mut self) -> Result<(), Error> {
-        let db = self
-            .store
-            .read()
-            .map_err(|e| Error::Get(format!("{:?}", e)))?;
-        if let Some(handle) = db.cf_handle(&self.name) {
-            let iter = db.iterator_cf(handle, IteratorMode::Start);
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            let iter = self.store.iterator_cf(&handle, IteratorMode::Start);
             for (key, _) in iter.flatten() {
-                let key = String::from_utf8(key.to_vec()).map_err(|_| {
+                let key = String::from_utf8(key.to_vec()).map_err(|e| {
                     Error::Store("Can not convert key to string.".to_owned())
                 })?;
                 if key.starts_with(&self.prefix) {
-                    db.delete_cf(handle, key)
+                    self.store.delete_cf(&handle, key)
                         .map_err(|e| Error::Get(format!("{:?}", e)))?;
                 }
             }
@@ -203,13 +179,9 @@ impl Collection for RocksDbStore {
     }
 
     fn flush(&self) -> Result<(), Error> {
-        let db = self
-            .store
-            .read()
-            .map_err(|e| Error::Get(format!("{:?}", e)))?;
-        if let Some(handle) = db.cf_handle(&self.name) {
-            Ok(db
-                .flush_cf(handle)
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            Ok(self.store
+                .flush_cf(&handle)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
             Err(Error::Store(
@@ -220,12 +192,12 @@ impl Collection for RocksDbStore {
 }
 
 type GuardIter<'a> = (
-    Mutex<RwLockReadGuard<'a, DB>>,
+    Arc<DB>,
     DBIteratorWithThreadMode<'a, DB>,
 );
 
 pub struct RocksDbIterator<'a> {
-    store: &'a Arc<RwLock<DB>>,
+    store: &'a Arc<DB>,
     name: String,
     prefix: String,
     mode: IteratorMode<'a>,
@@ -234,7 +206,7 @@ pub struct RocksDbIterator<'a> {
 
 impl<'a> RocksDbIterator<'a> {
     pub fn new(
-        store: &'a Arc<RwLock<DB>>,
+        store: &'a Arc<DB>,
         name: &str,
         prefix: &str,
         reverse: bool,
@@ -261,16 +233,13 @@ impl Iterator for RocksDbIterator<'_> {
         let iter = if let Some((_, iter)) = &mut self.current {
             iter
         } else {
-            let guard = self
-                .store
-                .read()
-                .expect("Can not get read lock for the store.");
+            let guard = self.store.clone();
             let sref = unsafe { change_lifetime_const(&*guard) };
             let handle = sref
                 .cf_handle(&self.name)
                 .expect("RocksDB column for the store does not exist.");
-            let iter = sref.iterator_cf(handle, self.mode);
-            self.current = Some((Mutex::new(guard), iter));
+            let iter = sref.iterator_cf(&handle, self.mode);
+            self.current = Some((guard, iter));
             &mut self.current.as_mut().unwrap().1
         };
         while let Some(Ok((key, value))) = iter.next() {
