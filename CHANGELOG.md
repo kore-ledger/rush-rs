@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🐛 Bug Fixes
+
+- Do not return the ActorRef until it is in Started - iss15
+- Do not return the ActorRef until it is in Started - iss15
+- Remove blocks with childs
+- Async sink
+- Shared tokio cancell
+- Cargo fmt
+- New errors, and fix error in actor pre_start
+- Async retry actor
+- Store and rockdbs fixs
+- Logs
+- Obtain nonce
+- Persist and ligth_persist
+- Better async RocksDB
+- Sqlite connections
+- Tests
+
+### 📚 Documentation
+
+- Update CHANGELOG.md
+- Update Copyright
+- Update dependencies, cargo fmt, cargo clippy
+
+### 🧪 Testing
+
+- Test coverage
+
 ## [0.5.0] - 2024-10-15
 
 ### 🚀 Features

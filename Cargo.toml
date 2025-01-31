@@ -1,3 +1,9 @@
+[package]
+name = "rush_rs"
+
+[dependencies]
+actor = { path = "./actor" }
+
 [workspace]
 members = [
     "actor",
@@ -9,7 +15,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.2"
+version = "0.6.3"
 edition = "2021"
 
 [workspace.dependencies]
