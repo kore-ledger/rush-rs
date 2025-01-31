@@ -1,5 +1,6 @@
 [package]
 name = "rush_rs"
+version = "0.6.3"
 
 [dependencies]
 actor = { path = "./actor" }

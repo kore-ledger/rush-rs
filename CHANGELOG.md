@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- Exhibit library
+
 ### 🐛 Bug Fixes
 
 - Do not return the ActorRef until it is in Started - iss15
