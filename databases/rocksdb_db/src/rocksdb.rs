@@ -12,8 +12,9 @@ use store::{
 use rocksdb::{
     ColumnFamilyDescriptor, DBIteratorWithThreadMode, IteratorMode, Options, DB,
 };
+use tracing::info;
 
-use std::sync::Arc;
+use std::{fs, path::Path, sync::Arc};
 
 /// RocksDb manager.
 #[derive(Clone)]
@@ -29,7 +30,16 @@ impl RocksDbManager {
     ///
     /// The RocksDb manager.
     ///
-    pub fn new(path: &str) -> Self {
+    pub fn new(path: &str) -> Result<Self, Error> {
+        info!("Creating RockDB database manager");
+        if !Path::new(&path).exists() {
+            
+            info!("Path does not exist, creating it");
+            fs::create_dir_all(&path).map_err(|e| {
+                Error::CreateStore(format!("fail RockDB create directory: {}", e))
+            })?;
+        }
+
         let mut options = Options::default();
         options.create_if_missing(true);
 
@@ -45,13 +55,14 @@ impl RocksDbManager {
             .collect();
 
         // Abrir la base de datos con las column families existentes
-        let db = DB::open_cf_descriptors(&options, path, cf_descriptors)
-            .expect("Cannot open the database with existing column families.");
+        let db = DB::open_cf_descriptors(&options, path, cf_descriptors).map_err(|e| {
+            Error::CreateStore(format!("Can not open RockDB: {}", e))
+        })?;
 
-        Self {
+        Ok(Self {
             opts: options,
             db: Arc::new(db),
-        }
+        })
     }
 }
 
