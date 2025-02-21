@@ -14,6 +14,7 @@ use store::{
 };
 
 use rusqlite::{params, Connection, OpenFlags, Result as SQLiteResult};
+use tracing::info;
 
 use std::{fs, path::Path};
 use std::sync::{Arc, Mutex};
@@ -41,20 +42,23 @@ pub struct SqliteManager {
 
 impl SqliteManager {
     /// Create a new SQLite database manager.
-    pub fn new(path: &str) -> Self {
+    pub fn new(path: &str) -> Result<Self, Error> {
+        info!("Creating SQLite database manager");
         if !Path::new(&path).exists() {
+            info!("Path does not exist, creating it");
             fs::create_dir_all(&path).map_err(|e| {
                 Error::CreateStore(format!("fail SQLite create directory: {}", e))
-            }).expect("Error creating directory");
+            })?;
         }
+        info!("Opening SQLite connection");
         
         let conn = open(format!("{}/database.db", path)).map_err(|e| {
             Error::CreateStore(format!("fail SQLite open connection: {}", e))
         }).expect("Cannot open the database ");
     
-        Self {
+        Ok(Self {
             conn: Arc::new(Mutex::new(conn))
-        }
+        })
     }
 }
 
