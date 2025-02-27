@@ -35,7 +35,7 @@ impl RocksDbManager {
         if !Path::new(&path).exists() {
             
             info!("Path does not exist, creating it");
-            fs::create_dir_all(&path).map_err(|e| {
+            fs::create_dir_all(path).map_err(|e| {
                 Error::CreateStore(format!("fail RockDB create directory: {}", e))
             })?;
         }
@@ -63,19 +63,6 @@ impl RocksDbManager {
             opts: options,
             db: Arc::new(db),
         })
-    }
-}
-
-impl Default for RocksDbManager {
-    fn default() -> Self {
-        let dir =
-            tempfile::tempdir().expect("Can not create temporal directory.");
-        let db =
-            DB::open_default(dir.path()).expect("Can not create the database.");
-        Self {
-            opts: Options::default(),
-            db: Arc::new(db),
-        }
     }
 }
 
@@ -245,7 +232,7 @@ impl Iterator for RocksDbIterator<'_> {
             iter
         } else {
             let guard = self.store.clone();
-            let sref = unsafe { change_lifetime_const(&*guard) };
+            let sref = change_lifetime_const(&*guard);
             let handle = sref
                 .cf_handle(&self.name)
                 .expect("RocksDB column for the store does not exist.");
@@ -266,12 +253,27 @@ impl Iterator for RocksDbIterator<'_> {
     }
 }
 
-unsafe fn change_lifetime_const<'b, T>(x: &T) -> &'b T {
-    &*(x as *const T)
+fn change_lifetime_const<'b, T>(x: &T) -> &'b T {
+    unsafe {
+        &*(x as *const T)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    impl Default for RocksDbManager {
+        fn default() -> Self {
+            let dir =
+                tempfile::tempdir().expect("Can not create temporal directory.");
+            let db =
+                DB::open_default(dir.path()).expect("Can not create the database.");
+            Self {
+                opts: Options::default(),
+                db: Arc::new(db),
+            }
+        }
+    }
+
     use super::*;
     use store::test_store_trait;
     test_store_trait! {

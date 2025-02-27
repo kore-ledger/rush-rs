@@ -7,7 +7,7 @@ edition = { workspace = true}
 [dependencies]
 rocksdb = { version = "0.23.0", features = ["multi-threaded-cf"] }
 store = { path = "../../store" }
-tempfile = {workspace = true }
 tracing = {workspace = true }
 
 [dev-dependencies]
+tempfile = {workspace = true }

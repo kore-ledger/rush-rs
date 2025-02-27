@@ -19,21 +19,6 @@ use tracing::info;
 use std::{fs, path::Path};
 use std::sync::{Arc, Mutex};
 
-pub fn create_temp_dir() -> String {
-    let path = temp_dir();
-
-    if fs::metadata(&path).is_err() {
-        fs::create_dir_all(&path).unwrap();
-    }
-    path
-}
-
-fn temp_dir() -> String {
-    let dir =
-        tempfile::tempdir().expect("Can not create temporal directory.");
-    dir.path().to_str().unwrap().to_owned()
-}
-
 /// SQLite database manager.
 #[derive(Clone)]
 pub struct SqliteManager {
@@ -47,7 +32,7 @@ impl SqliteManager {
         if !Path::new(&path).exists() {
             
             info!("Path does not exist, creating it");
-            fs::create_dir_all(&path).map_err(|e| {
+            fs::create_dir_all(path).map_err(|e| {
                 Error::CreateStore(format!("fail SQLite create directory: {}", e))
             })?;
         }
@@ -60,19 +45,6 @@ impl SqliteManager {
         Ok(Self {
             conn: Arc::new(Mutex::new(conn))
         })
-    }
-}
-
-impl Default for SqliteManager {
-    fn default() -> Self {
-        let path = format!("{}/database.db", create_temp_dir());
-        let conn = open(&path).map_err(|e| {
-            Error::CreateStore(format!("fail SQLite open connection: {}", e))
-        }).expect("Cannot open the database ");
-
-        Self {
-            conn: Arc::new(Mutex::new(conn))
-        }
     }
 }
 
@@ -247,6 +219,33 @@ pub fn open<P: AsRef<Path>>(path: P) -> Result<Connection, Error> {
 
 #[cfg(test)]
 mod tests {
+    pub fn create_temp_dir() -> String {
+        let path = temp_dir();
+    
+        if fs::metadata(&path).is_err() {
+            fs::create_dir_all(&path).unwrap();
+        }
+        path
+    }
+    
+    fn temp_dir() -> String {
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
+        dir.path().to_str().unwrap().to_owned()
+    }
+
+    impl Default for SqliteManager {
+        fn default() -> Self {
+            let path = format!("{}/database.db", create_temp_dir());
+            let conn = open(&path).map_err(|e| {
+                Error::CreateStore(format!("fail SQLite open connection: {}", e))
+            }).expect("Cannot open the database ");
+    
+            Self {
+                conn: Arc::new(Mutex::new(conn))
+            }
+        }
+    }
 
     use super::*;
     use store::{

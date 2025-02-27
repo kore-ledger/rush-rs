@@ -1,10 +1,3 @@
-[package]
-name = "rush_rs"
-version = "0.6.3"
-
-[dependencies]
-actor = { path = "./actor" }
-
 [workspace]
 members = [
     "actor",
@@ -17,19 +10,19 @@ resolver = "2"
 
 [workspace.package]
 version = "0.6.3"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85.0"
 
 [workspace.dependencies]
-async-trait = { version = "0.1.85" }
+async-trait = { version = "0.1.86" }
 backoff = "0.4"
 bincode = "1.3"
 futures =  { version = "0.3.31", features = ["async-await"] }
-serde = { version = "1.0.217", features = ["derive"] }
-tempfile = "3.15.0"
-thiserror = { version = "2.0.10" }
+serde = { version = "1.0.218", features = ["derive"] }
+tempfile = "3.17.1"
+thiserror = { version = "2.0.11" }
 tokio = { version = "1.43.0" }
 tokio-util = { version = "0.7.13" }
 tracing ={ version = "0.1.41" }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-test = "0.2"
-
