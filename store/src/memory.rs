@@ -45,7 +45,9 @@ impl Collection for MemoryStore {
         let key = format!("{}.{}", self.prefix, key);
         match self.data.get(&key) {
             Some(value) => Ok(value.clone()),
-            None => Err(Error::EntryNotFound("Query returned no rows".to_owned())),
+            None => {
+                Err(Error::EntryNotFound("Query returned no rows".to_owned()))
+            }
         }
     }
 
@@ -59,7 +61,9 @@ impl Collection for MemoryStore {
         let key = format!("{}.{}", self.prefix, key);
         match self.data.remove(&key) {
             Some(_) => Ok(()),
-            None => Err(Error::EntryNotFound("Query returned no rows".to_owned())),
+            None => {
+                Err(Error::EntryNotFound("Query returned no rows".to_owned()))
+            }
         }
     }
 

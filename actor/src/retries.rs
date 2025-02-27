@@ -7,9 +7,9 @@
 //!
 
 use crate::{
-    supervision::{RetryStrategy, Strategy},
     Actor, ActorContext, ActorPath, ActorRef, Error, Event, Handler, Message,
     Response,
+    supervision::{RetryStrategy, Strategy},
 };
 
 use async_trait::async_trait;
@@ -122,7 +122,9 @@ where
                                         .await
                                         .is_err()
                                     {
-                                        warn!("Cannot initiate retry to send message");
+                                        warn!(
+                                            "Cannot initiate retry to send message"
+                                        );
                                     }
                                 });
                             }

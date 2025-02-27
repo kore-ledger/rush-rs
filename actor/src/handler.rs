@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    actor::{Actor, ActorContext, Handler},
     ActorPath, Error,
+    actor::{Actor, ActorContext, Handler},
 };
 
 use async_trait::async_trait;

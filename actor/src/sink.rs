@@ -4,7 +4,7 @@
 use crate::Event;
 
 use async_trait::async_trait;
-use tokio::sync::broadcast::{error::RecvError, Receiver as EventReceiver};
+use tokio::sync::broadcast::{Receiver as EventReceiver, error::RecvError};
 
 use tracing::debug;
 

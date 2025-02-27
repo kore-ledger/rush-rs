@@ -5,12 +5,12 @@
 //!
 
 use store::{
-    database::{Collection, DbManager},
     Error,
+    database::{Collection, DbManager},
 };
 
 use rocksdb::{
-    ColumnFamilyDescriptor, DBIteratorWithThreadMode, IteratorMode, Options, DB,
+    ColumnFamilyDescriptor, DB, DBIteratorWithThreadMode, IteratorMode, Options,
 };
 use tracing::info;
 
@@ -33,10 +33,12 @@ impl RocksDbManager {
     pub fn new(path: &str) -> Result<Self, Error> {
         info!("Creating RockDB database manager");
         if !Path::new(&path).exists() {
-            
             info!("Path does not exist, creating it");
             fs::create_dir_all(path).map_err(|e| {
-                Error::CreateStore(format!("fail RockDB create directory: {}", e))
+                Error::CreateStore(format!(
+                    "fail RockDB create directory: {}",
+                    e
+                ))
             })?;
         }
 
@@ -55,9 +57,10 @@ impl RocksDbManager {
             .collect();
 
         // Abrir la base de datos con las column families existentes
-        let db = DB::open_cf_descriptors(&options, path, cf_descriptors).map_err(|e| {
-            Error::CreateStore(format!("Can not open RockDB: {}", e))
-        })?;
+        let db = DB::open_cf_descriptors(&options, path, cf_descriptors)
+            .map_err(|e| {
+                Error::CreateStore(format!("Can not open RockDB: {}", e))
+            })?;
 
         Ok(Self {
             opts: options,
@@ -73,7 +76,8 @@ impl DbManager<RocksDbStore> for RocksDbManager {
         prefix: &str,
     ) -> Result<RocksDbStore, Error> {
         if self.db.cf_handle(name).is_none() {
-            self.db.create_cf(name, &self.opts)
+            self.db
+                .create_cf(name, &self.opts)
                 .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
         }
         Ok(RocksDbStore {
@@ -84,7 +88,9 @@ impl DbManager<RocksDbStore> for RocksDbManager {
     }
 
     fn stop(self) -> Result<(), Error> {
-        self.db.flush().map_err(|e| Error::Store(format!("{:?}", e)))
+        self.db
+            .flush()
+            .map_err(|e| Error::Store(format!("{:?}", e)))
     }
 }
 
@@ -104,12 +110,15 @@ impl Collection for RocksDbStore {
     fn get(&self, key: &str) -> Result<Vec<u8>, Error> {
         if let Some(handle) = self.store.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
-            let result = self.store
+            let result = self
+                .store
                 .get_cf(&handle, key)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?;
             match result {
                 Some(value) => Ok(value),
-                _ => Err(Error::EntryNotFound("Query returned no rows".to_owned())),
+                _ => Err(Error::EntryNotFound(
+                    "Query returned no rows".to_owned(),
+                )),
             }
         } else {
             Err(Error::Store(
@@ -121,7 +130,8 @@ impl Collection for RocksDbStore {
     fn put(&mut self, key: &str, data: &[u8]) -> Result<(), Error> {
         if let Some(handle) = self.store.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
-            Ok(self.store
+            Ok(self
+                .store
                 .put_cf(&handle, key, data)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
@@ -134,7 +144,8 @@ impl Collection for RocksDbStore {
     fn del(&mut self, key: &str) -> Result<(), Error> {
         if let Some(handle) = self.store.cf_handle(&self.name) {
             let key = format!("{}.{}", self.prefix, key);
-            Ok(self.store
+            Ok(self
+                .store
                 .delete_cf(&handle, key)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
@@ -149,10 +160,14 @@ impl Collection for RocksDbStore {
             let iter = self.store.iterator_cf(&handle, IteratorMode::Start);
             for (key, _) in iter.flatten() {
                 let key = String::from_utf8(key.to_vec()).map_err(|e| {
-                    Error::Store(format!("Can not convert key to string: {}", e))
+                    Error::Store(format!(
+                        "Can not convert key to string: {}",
+                        e
+                    ))
                 })?;
                 if key.starts_with(&self.prefix) {
-                    self.store.delete_cf(&handle, key)
+                    self.store
+                        .delete_cf(&handle, key)
                         .map_err(|e| Error::Get(format!("{:?}", e)))?;
                 }
             }
@@ -178,7 +193,8 @@ impl Collection for RocksDbStore {
 
     fn flush(&self) -> Result<(), Error> {
         if let Some(handle) = self.store.cf_handle(&self.name) {
-            Ok(self.store
+            Ok(self
+                .store
                 .flush_cf(&handle)
                 .map_err(|e| Error::Get(format!("{:?}", e)))?)
         } else {
@@ -189,10 +205,7 @@ impl Collection for RocksDbStore {
     }
 }
 
-type GuardIter<'a> = (
-    Arc<DB>,
-    DBIteratorWithThreadMode<'a, DB>,
-);
+type GuardIter<'a> = (Arc<DB>, DBIteratorWithThreadMode<'a, DB>);
 
 pub struct RocksDbIterator<'a> {
     store: &'a Arc<DB>,
@@ -254,19 +267,17 @@ impl Iterator for RocksDbIterator<'_> {
 }
 
 fn change_lifetime_const<'b, T>(x: &T) -> &'b T {
-    unsafe {
-        &*(x as *const T)
-    }
+    unsafe { &*(x as *const T) }
 }
 
 #[cfg(test)]
 mod tests {
     impl Default for RocksDbManager {
         fn default() -> Self {
-            let dir =
-                tempfile::tempdir().expect("Can not create temporal directory.");
-            let db =
-                DB::open_default(dir.path()).expect("Can not create the database.");
+            let dir = tempfile::tempdir()
+                .expect("Can not create temporal directory.");
+            let db = DB::open_default(dir.path())
+                .expect("Can not create the database.");
             Self {
                 opts: Options::default(),
                 db: Arc::new(db),

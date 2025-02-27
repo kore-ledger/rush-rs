@@ -8,13 +8,13 @@
 //!
 
 use crate::{
+    Actor, ActorPath, ActorRef, Error, Event, Handler,
     actor::ChildErrorSender,
     runner::{ActorRunner, ChildSender},
     sink::Sink,
-    Actor, ActorPath, ActorRef, Error, Event, Handler,
 };
 
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error};

@@ -24,12 +24,12 @@ use actor::{
 use async_trait::async_trait;
 
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
     ChaCha20Poly1305, Nonce,
+    aead::{Aead, AeadCore, KeyInit, OsRng},
 };
 use memsecurity::EncryptedMem;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use tracing::{debug, error};
 
@@ -94,7 +94,7 @@ pub trait PersistentActor:
             None => {
                 return Err(ActorError::Store(
                     "Can't get store actor".to_string(),
-                ))
+                ));
             }
         };
 
@@ -150,7 +150,7 @@ pub trait PersistentActor:
             None => {
                 return Err(ActorError::Store(
                     "Can't get store actor".to_string(),
-                ))
+                ));
             }
         };
 
@@ -203,7 +203,7 @@ pub trait PersistentActor:
             None => {
                 return Err(ActorError::Store(
                     "Can't get store actor".to_string(),
-                ))
+                ));
             }
         };
         store
@@ -237,7 +237,7 @@ pub trait PersistentActor:
             None => {
                 return Err(ActorError::Store(
                     "Can't get store actor".to_string(),
-                ))
+                ));
             }
         };
         let response = store
@@ -804,14 +804,18 @@ where
             },
             StoreCommand::GetEvents { from, to } => {
                 let events = self.events(from, to).map_err(|e| {
-                    ActorError::Store(format!("Unable to get events range: {}", e))
+                    ActorError::Store(format!(
+                        "Unable to get events range: {}",
+                        e
+                    ))
                 })?;
                 Ok(StoreResponse::Events(events))
             }
             // Find a state.
             StoreCommand::Find(filter) => {
-                let state =
-                    self.find(filter).map_err(|e| ActorError::EntryNotFound(e.to_string()))?;
+                let state = self
+                    .find(filter)
+                    .map_err(|e| ActorError::EntryNotFound(e.to_string()))?;
                 Ok(StoreResponse::State(state))
             }
             // Get the last event.
@@ -838,9 +842,10 @@ where
             StoreCommand::LastEventsFrom(from) => {
                 let events =
                     self.events(from, self.event_counter).map_err(|e| {
-                        ActorError::Store(
-                            format!("Unable to get the latest events: {}", e),
-                        )
+                        ActorError::Store(format!(
+                            "Unable to get the latest events: {}",
+                            e
+                        ))
                     })?;
                 Ok(StoreResponse::Events(events))
             }

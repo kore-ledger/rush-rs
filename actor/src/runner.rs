@@ -5,16 +5,16 @@
 //!
 
 use crate::{
+    ActorPath,
+    Error,
     actor::{
         Actor, ActorContext, ActorLifecycle, ActorRef, ChildAction, ChildError,
         ChildErrorReceiver, ChildErrorSender, Handler,
     },
     //error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
-    handler::{mailbox, HandleHelper, MailboxReceiver, MessageHandler},
+    handler::{HandleHelper, MailboxReceiver, MessageHandler, mailbox},
     supervision::{RetryStrategy, SupervisionStrategy},
     system::SystemRef,
-    ActorPath,
-    Error,
 };
 
 use tokio::{
@@ -405,10 +405,10 @@ mod tests {
     use super::*;
 
     use crate::{
+        Error,
         actor::{Actor, ActorContext, Event, Handler, Message, Response},
         supervision::{FixedIntervalStrategy, Strategy, SupervisionStrategy},
         system::SystemRef,
-        Error,
     };
     use async_trait::async_trait;
     use serde::{Deserialize, Serialize};
@@ -530,10 +530,12 @@ mod tests {
 
         assert!(logs_contain("Actor /user/test is terminated"));
 
-        assert!(system
-            .get_actor::<TestActor>(&ActorPath::from("/user/test"))
-            .await
-            .is_none());
+        assert!(
+            system
+                .get_actor::<TestActor>(&ActorPath::from("/user/test"))
+                .await
+                .is_none()
+        );
 
         let actor = TestActor { failed: true };
 
@@ -566,9 +568,11 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(2)).await;
         assert!(logs_contain("Actor /user/test is terminated"));
 
-        assert!(system
-            .get_actor::<TestActor>(&ActorPath::from("/user/test"))
-            .await
-            .is_none());
+        assert!(
+            system
+                .get_actor::<TestActor>(&ActorPath::from("/user/test"))
+                .await
+                .is_none()
+        );
     }
 }

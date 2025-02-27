@@ -9,11 +9,11 @@
 //!
 
 use crate::{
+    ActorPath, Error,
     handler::HandleHelper,
     runner::{ChildSender, InnerAction, InnerSender},
     supervision::SupervisionStrategy,
     system::SystemRef,
-    ActorPath, Error,
 };
 
 use tokio::sync::{broadcast::Receiver as EventReceiver, mpsc, oneshot};
@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 
 use async_trait::async_trait;
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use tracing::debug;
 

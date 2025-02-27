@@ -17,7 +17,9 @@ pub enum Error {
     #[error("An error occurred while sending a message to actor: {0}.")]
     Send(String),
     /// An error occurred while receiving a response from an actor.
-    #[error("Actor {0} returned a response that was not expected, expected response: {1}")]
+    #[error(
+        "Actor {0} returned a response that was not expected, expected response: {1}"
+    )]
     UnexpectedResponse(ActorPath, String),
     /// An error occurred while creating an actor.
     #[error("An error occurred while creating an actor: {0}/{1}.")]
