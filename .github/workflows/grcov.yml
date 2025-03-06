@@ -1,10 +1,9 @@
-# CARGO_INCREMENTAL=0 RUSTFLAGS='-Cinstrument-coverage' LLVM_PROFILE_FILE='cargo-test-%p-%m.profraw' cargo test
-# grcov . --binary-path ./target/debug/deps/ -s . -t html --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o target/coverage/html
-# open target/coverage/html/index.html
-# find . -type f -name "*.profraw" -delete
-# rm -rf target/coverage/
+# mkdir coverage
+# cargo llvm-cov --lcov --output-path coverage/lcov.info
+# genhtml -o coverage/html coverage/lcov.info
+# open coverage/html/index.html
 
-name: Code coverage with grcov
+name: Code coverage with llvm-cov
 
 on:
   push:
@@ -13,49 +12,37 @@ on:
     branches: [ "main" ]
 
 jobs:
-  grcov:
+  coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install toolchain
+      - name: Install Rust stable
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable  # Usar la misma versión estable que en local
+          toolchain: stable
           override: true
           profile: minimal
 
-      - name: Run tests with coverage instrumentation
-        env:
-          CARGO_INCREMENTAL: '0'
-          RUSTFLAGS: '-Cinstrument-coverage'
-          RUSTDOCFLAGS: '-Cinstrument-coverage'
-          LLVM_PROFILE_FILE: 'coverage/cargo-test-%p-%m.profraw'
-        run: |
-          mkdir -p coverage  # Asegurar que la carpeta de cobertura exista
-          cargo test --all --all-features --verbose
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
 
-      - name: Install grcov
-        run: cargo install grcov
-
-      - name: Generate coverage report
-        run: |
-          grcov coverage/ --binary-path target/debug/deps/ -s . -t lcov --branch \
-            --ignore-not-existing --ignore '../*' --ignore '/*' -o coverage/lcov.info
+      - name: Run tests with coverage
+        run: mkdir coverage && cargo llvm-cov --lcov --output-path coverage/lcov.info
 
       - name: Upload coverage to Coveralls
-        uses: coverallsapp/github-action@master
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: coverage/lcov.info
           parallel: true
 
   finish:
-    needs: grcov
+    needs: coverage
     runs-on: ubuntu-latest
     steps:
       - name: Finalize Coveralls upload
-        uses: coverallsapp/github-action@master
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel-finished: true
