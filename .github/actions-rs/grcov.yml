@@ -1,6 +1,6 @@
 llvm: true
 output-type: lcov
-output-path: ./lcov.info
+output-path: ./coverage/lcov.info
 binary-path: ./target/debug
 source-dir: .
 excl-line: .*GRCOV-LINE$

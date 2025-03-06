@@ -36,13 +36,3 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: coverage/lcov.info
           parallel: true
-
-  finish:
-    needs: coverage
-    runs-on: ubuntu-latest
-    steps:
-      - name: Finalize Coveralls upload
-        uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          parallel-finished: true
