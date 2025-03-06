@@ -11,3 +11,5 @@ desktop.ini
 /target
 /debug
 Cargo.lock
+
+**/*.profraw

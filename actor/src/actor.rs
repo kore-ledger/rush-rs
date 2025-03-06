@@ -423,13 +423,11 @@ pub trait Actor: Send + Sync + Sized + 'static {
 
     /// Defines the supervision strategy to use for this actor. By default it is
     /// `Stop` which simply stops the actor if an error occurs at startup or when an
-    /// error or fault is issued from a handler. You can also set this to
-    /// [`SupervisionStrategy::Retry`] with a chosen [`supervision::RetryStrategy`].
+    /// error or fault is issued from a handler.
     ///
     /// # Returns
     ///
     /// Returns the supervision strategy to use for this actor.
-    ///
     fn supervision_strategy() -> SupervisionStrategy {
         SupervisionStrategy::Stop
     }
@@ -757,8 +755,6 @@ mod test {
     use serde::{Deserialize, Serialize};
     use tokio::sync::mpsc;
 
-    use tracing_test::traced_test;
-
     #[derive(Debug, Clone)]
     struct TestActor {
         counter: usize,
@@ -794,6 +790,10 @@ mod test {
             msg: TestMessage,
             ctx: &mut ActorContext<TestActor>,
         ) -> Result<TestResponse, Error> {
+            if ctx.parent::<TestActor>().await.is_some() {
+                panic!("Is not a root actor");
+            }
+
             let value = msg.0;
             self.counter += value;
             ctx.publish_event(TestEvent(self.counter)).await.unwrap();
@@ -812,7 +812,6 @@ mod test {
     }
 
     #[tokio::test]
-    #[traced_test]
     async fn test_actor() {
         let (event_sender, _event_receiver) = mpsc::channel(100);
         let system = SystemRef::new(event_sender);

@@ -9,10 +9,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-
-use tracing::error;
 use tracing_subscriber::EnvFilter;
-use tracing_test::traced_test;
 
 // Defines parent actor
 #[derive(Debug, Clone)]
@@ -89,6 +86,13 @@ impl Handler<TestActor> for TestActor {
             TestCommand::Decrement(value) => {
                 self.state -= value;
                 ctx.publish_event(TestEvent(self.state)).await.unwrap();
+                
+                let child: ActorRef<ChildActor> =
+                    ctx.get_child("child").await.unwrap();
+                child
+                    .tell(ChildCommand::SetState(self.state))
+                    .await
+                    .unwrap();
                 Ok(TestResponse::None)
             }
             TestCommand::GetState => Ok(TestResponse::State(self.state)),
@@ -177,26 +181,16 @@ impl Handler<ChildActor> for ChildActor {
                     ctx.publish_event(ChildEvent(self.state)).await.unwrap();
                     Ok(ChildResponse::None)
                 } else if value > 10 && value < 100 {
-                    if ctx
-                        .emit_error(Error::Functional(
+                    ctx.emit_error(Error::Functional(
                             "Value is too high".to_owned(),
                         ))
-                        .await
-                        .is_err()
-                    {
-                        error!("Error emitting error");
-                    }
+                        .await.unwrap();
                     Ok(ChildResponse::State(100))
                 } else {
-                    if ctx
-                        .emit_fail(Error::Functional(
+                    ctx.emit_fail(Error::Functional(
                             "Value produces a fault".to_owned(),
                         ))
-                        .await
-                        .is_err()
-                    {
-                        error!("Error emitting fault");
-                    }
+                        .await.unwrap();
                     Ok(ChildResponse::None)
                 }
             }
@@ -230,6 +224,17 @@ async fn test_actor() {
 
     let event = recv.recv().await.unwrap();
     assert_eq!(event.0, 10);
+    let response = child_actor.ask(ChildCommand::GetState).await.unwrap();
+    assert_eq!(response, ChildResponse::State(10));
+
+    parent_ref.tell(TestCommand::Decrement(2)).await.unwrap();
+    let response = parent_ref.ask(TestCommand::GetState).await.unwrap();
+    assert_eq!(response, TestResponse::State(8));
+
+    let event = recv.recv().await.unwrap();
+    assert_eq!(event.0, 8);
+    let response = child_actor.ask(ChildCommand::GetState).await.unwrap();
+    assert_eq!(response, ChildResponse::State(8));
 }
 
 #[tokio::test]
@@ -255,7 +260,6 @@ async fn test_actor_error() {
 }
 
 #[tokio::test]
-#[traced_test]
 async fn test_actor_fault() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())

@@ -5,12 +5,6 @@
 //!
 //! This module contains the store implementation.
 //!
-//! # Example
-//!
-//! ```rust
-//!
-//! ```
-//!
 
 pub mod database;
 pub mod error;
