@@ -410,20 +410,23 @@ impl<P: PersistentActor> Store<P> {
             error!("Store is inmutable");
             return Err(Error::Store("Store is inmutable".to_owned()));
         }
+        let bin_config = bincode::config::standard();
+
         let bytes = if let Some(key_box) = &self.key_box {
             if let Ok(key) = key_box.decrypt() {
-                let bytes = bincode::serialize(&event).map_err(|e| {
-                    error!("Can't serialize event: {}", e);
-                    Error::Store(format!("Can't serialize event: {}", e))
+                let bytes = bincode::serde::encode_to_vec(&event, bin_config)
+                    .map_err(|e| {
+                    error!("Can't encode event: {}", e);
+                    Error::Store(format!("Can't encode event: {}", e))
                 })?;
                 self.encrypt(key.as_ref(), &bytes)?
             } else {
                 return Err(Error::Store("Can't decrypt key".to_owned()));
             }
         } else {
-            bincode::serialize(&event).map_err(|e| {
-                error!("Can't serialize event: {}", e);
-                Error::Store(format!("Can't serialize event: {}", e))
+            bincode::serde::encode_to_vec(&event, bin_config).map_err(|e| {
+                error!("Can't encode event: {}", e);
+                Error::Store(format!("Can't encode event: {}", e))
             })?
         };
         self.events
@@ -452,10 +455,14 @@ impl<P: PersistentActor> Store<P> {
             error!("Store is inmutable");
             return Err(Error::Store("Store is inmutable".to_owned()));
         }
-        let bytes = bincode::serialize(&event).map_err(|e| {
-            error!("Can't serialize event: {}", e);
-            Error::Store(format!("Can't serialize event: {}", e))
-        })?;
+        let bin_config = bincode::config::standard();
+
+        let bytes =
+            bincode::serde::encode_to_vec(&event, bin_config).map_err(|e| {
+                error!("Can't encode event: {}", e);
+                Error::Store(format!("Can't encode event: {}", e))
+            })?;
+
         if self.event_counter > 0 {
             self.event_counter = 0;
         }
@@ -475,21 +482,27 @@ impl<P: PersistentActor> Store<P> {
     ///
     fn last_event(&self) -> Result<Option<P::Event>, Error> {
         if let Some((_, data)) = self.events.last() {
+            let bin_config = bincode::config::standard();
+
             let event: P::Event = if let Some(key_box) = &self.key_box {
                 if let Ok(key) = key_box.decrypt() {
                     let data = self.decrypt(key.as_ref(), data.as_slice())?;
-                    bincode::deserialize(&data).map_err(|e| {
-                        error!("Can't deserialize event: {}", e);
-                        Error::Store(format!("Can't deserialize event: {}", e))
-                    })?
+                    bincode::serde::decode_from_slice(&data, bin_config)
+                        .map_err(|e| {
+                            error!("Can't decode event: {}", e);
+                            Error::Store(format!("Can't decode event: {}", e))
+                        })?
+                        .0
                 } else {
                     return Err(Error::Store("Can't decrypt key".to_owned()));
                 }
             } else {
-                bincode::deserialize(data.as_slice()).map_err(|e| {
-                    error!("Can't deserialize event: {}", e);
-                    Error::Store(format!("Can't deserialize event: {}", e))
-                })?
+                bincode::serde::decode_from_slice(&data, bin_config)
+                    .map_err(|e| {
+                        error!("Can't decode event: {}", e);
+                        Error::Store(format!("Can't decode event: {}", e))
+                    })?
+                    .0
             };
             Ok(Some(event))
         } else {
@@ -500,29 +513,35 @@ impl<P: PersistentActor> Store<P> {
     /// Retrieve events.
     fn events(&mut self, from: u64, to: u64) -> Result<Vec<P::Event>, Error> {
         let mut events = Vec::new();
+        let bin_config = bincode::config::standard();
+
         for i in from..to {
             if let Ok(data) = self.events.get(&format!("{:020}", i)) {
                 let event: P::Event = if let Some(key_box) = &self.key_box {
                     if let Ok(key) = key_box.decrypt() {
                         let data =
                             self.decrypt(key.as_ref(), data.as_slice())?;
-                        bincode::deserialize(&data).map_err(|e| {
-                            error!("Can't deserialize event: {}", e);
-                            Error::Store(format!(
-                                "Can't deserialize event: {}",
-                                e
-                            ))
-                        })?
+                        bincode::serde::decode_from_slice(&data, bin_config)
+                            .map_err(|e| {
+                                error!("Can't decode event: {}", e);
+                                Error::Store(format!(
+                                    "Can't decode event: {}",
+                                    e
+                                ))
+                            })?
+                            .0
                     } else {
                         return Err(Error::Store(
                             "Can't decrypt key".to_owned(),
                         ));
                     }
                 } else {
-                    bincode::deserialize(data.as_slice()).map_err(|e| {
-                        error!("Can't deserialize event: {}", e);
-                        Error::Store(format!("Can't deserialize event: {}", e))
-                    })?
+                    bincode::serde::decode_from_slice(&data, bin_config)
+                        .map_err(|e| {
+                            error!("Can't decode event: {}", e);
+                            Error::Store(format!("Can't decode event: {}", e))
+                        })?
+                        .0
                 };
                 events.push(event);
             } else {
@@ -548,9 +567,13 @@ impl<P: PersistentActor> Store<P> {
             return Err(Error::Store("Store is inmutable".to_owned()));
         }
         debug!("Snapshotting state: {:?}", actor);
-        let data = bincode::serialize(actor).map_err(|e| {
-            Error::Store(format!("Can't serialize state: {}", e))
-        })?;
+        let bin_config = bincode::config::standard();
+
+        let data =
+            bincode::serde::encode_to_vec(&actor, bin_config).map_err(|e| {
+                error!("Can't encode actor: {}", e);
+                Error::Store(format!("Can't encode actor: {}", e))
+            })?;
         let bytes = if let Some(key_box) = &self.key_box {
             if let Ok(key) = key_box.decrypt() {
                 self.encrypt(key.as_ref(), data.as_slice())?
@@ -587,9 +610,15 @@ impl<P: PersistentActor> Store<P> {
             self.event_counter = key.parse().map_err(|e| {
                 Error::Store(format!("Can't parse event key: {}", e))
             })?;
-            let mut state: P = bincode::deserialize(&bytes).map_err(|e| {
-                Error::Store(format!("Can't deserialize state: {}", e))
-            })?;
+            let bin_config = bincode::config::standard();
+
+            let mut state: P =
+                bincode::serde::decode_from_slice(&bytes, bin_config)
+                    .map_err(|e| {
+                        error!("Can't decode state: {}", e);
+                        Error::Store(format!("Can't decode state: {}", e))
+                    })?
+                    .0;
             // Recover events from the last state.
             let events = self.events(self.event_counter, u64::MAX)?;
             for event in events {
@@ -633,9 +662,15 @@ impl<P: PersistentActor> Store<P> {
             } else {
                 state
             };
-            let mut state: P = bincode::deserialize(&bytes).map_err(|e| {
-                Error::Store(format!("Can't deserialize state: {}", e))
-            })?;
+            let bin_config = bincode::config::standard();
+
+            let mut state: P =
+                bincode::serde::decode_from_slice(&bytes, bin_config)
+                    .map_err(|e| {
+                        error!("Can't decode state: {}", e);
+                        Error::Store(format!("Can't decode state: {}", e))
+                    })?
+                    .0;
             // Apply events to the state until you find the state that responds to the filter.
             for (_, event) in self.events.iter(false) {
                 if filter(&state) {
@@ -654,9 +689,12 @@ impl<P: PersistentActor> Store<P> {
                     event
                 };
                 let event: P::Event =
-                    bincode::deserialize(&bytes).map_err(|e| {
-                        Error::Store(format!("Can't deserialize event: {}", e))
-                    })?;
+                    bincode::serde::decode_from_slice(&bytes, bin_config)
+                        .map_err(|e| {
+                            error!("Can't decode event: {}", e);
+                            Error::Store(format!("Can't decode event: {}", e))
+                        })?
+                        .0;
                 state
                     .apply(&event)
                     .map_err(|e| Error::Store(e.to_string()))?;
