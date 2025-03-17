@@ -126,7 +126,7 @@ where
         debug!("Telling message to actor from handle reference.");
         let msg = ActorMessage::new(Some(message), sender, None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
-            error!("Failed to tell message! {}", error.to_string()); // GRCOV-START
+            debug!("Failed to tell message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
         } else {
             // GRCOV-END

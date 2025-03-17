@@ -117,15 +117,9 @@ where
                                 tokio::spawn(async move {
                                     debug!("Backoff for {:?}", &duration);
                                     tokio::time::sleep(duration).await;
-                                    if actor
+                                    let _ = actor
                                         .tell(RetryMessage::Retry)
-                                        .await
-                                        .is_err()
-                                    {
-                                        warn!(
-                                            "Cannot initiate retry to send message"
-                                        );
-                                    }
+                                        .await;
                                 });
                             }
                         } else {
