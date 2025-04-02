@@ -141,7 +141,7 @@ where
             RetryMessage::End => {
                 self.is_end = true;
                 debug!("RetryActor end");
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
         }
         Ok(())

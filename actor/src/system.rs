@@ -10,7 +10,7 @@
 use crate::{
     Actor, ActorPath, ActorRef, Error, Event, Handler,
     actor::ChildErrorSender,
-    runner::{ActorRunner, ChildSender},
+    runner::{ActorRunner, ChildStopSender},
     sink::Sink,
 };
 
@@ -68,7 +68,7 @@ pub struct SystemRef {
     helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
 
     /// The root actor sender.
-    senders: Arc<RwLock<Vec<ChildSender>>>,
+    senders: Arc<RwLock<Vec<ChildStopSender>>>,
 
     /// The event sender.
     event_sender: mpsc::Sender<SystemEvent>,
@@ -113,7 +113,7 @@ impl SystemRef {
         path: ActorPath,
         actor: A,
         error_helper: Option<ChildErrorSender>,
-    ) -> Result<(ActorRef<A>, ChildSender), Error>
+    ) -> Result<(ActorRef<A>, ChildStopSender), Error>
     where
         A: Actor + Handler<A>,
     {
@@ -127,7 +127,7 @@ impl SystemRef {
         }
         // Create the actor runner and init it.
         let system = self.clone();
-        let (mut runner, actor_ref, child_sender) =
+        let (mut runner, actor_ref, child_sender, stop_sender) =
             ActorRunner::create(path.clone(), actor, error_helper);
 
         // Store the actor reference.
@@ -139,7 +139,7 @@ impl SystemRef {
         let (sender, receiver) = oneshot::channel::<bool>();
 
         tokio::spawn(async move {
-            runner.init(system, Some(sender)).await;
+            runner.init(system, stop_sender, Some(sender)).await;
         });
 
         if receiver.await.map_err(|e| Error::Start(e.to_string()))? {
@@ -189,7 +189,7 @@ impl SystemRef {
         path: &ActorPath,
         error_helper: Option<ChildErrorSender>,
         actor_fn: F,
-    ) -> Result<(ActorRef<A>, Option<ChildSender>), Error>
+    ) -> Result<(ActorRef<A>, Option<ChildStopSender>), Error>
     where
         A: Actor + Handler<A>,
         F: FnOnce() -> A,

@@ -9,20 +9,20 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.3"
+version = "0.6.4"
 edition = "2024"
 rust-version = "1.85.0"
 
 [workspace.dependencies]
-async-trait = { version = "0.1.87" }
+async-trait = { version = "0.1.88" }
 backoff = "0.4"
 bincode = {version = "2.0.1", features = ["serde"] }
 futures =  { version = "0.3.31", features = ["async-await"] }
 serde = { version = "1.0.219", features = ["derive"] }
-tempfile = "3.18.0"
+tempfile = "3.19.1"
 thiserror = { version = "2.0.12" }
-tokio = { version = "1.44.0" }
-tokio-util = { version = "0.7.13" }
+tokio = { version = "1.44.1" }
+tokio-util = { version = "0.7.14" }
 tracing ={ version = "0.1.41" }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 tracing-test = "0.2"

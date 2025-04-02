@@ -26,7 +26,7 @@ struct ActorMessage<A>
 where
     A: Actor + Handler<A>,
 {
-    message: Option<A::Message>,
+    message: A::Message,
     sender: ActorPath,
     rsvp: Option<oneshot::Sender<Result<A::Response, Error>>>,
     _phantom_actor: PhantomData<A>,
@@ -39,7 +39,7 @@ where
 {
     /// Creates internal actor message from message and optional reponse sender.
     pub fn new(
-        message: Option<A::Message>,
+        message: A::Message,
         sender: ActorPath,
         rsvp: Option<oneshot::Sender<Result<A::Response, Error>>>,
     ) -> Self {
@@ -61,10 +61,10 @@ where
 {
     async fn handle(&mut self, actor: &mut A, ctx: &mut ActorContext<A>) {
         debug!("Handling internal message.");
-        if let Some(message) = &self.message {
+        
             debug!("Handling message.");
             let result = actor
-                .handle_message(self.sender.clone(), message.clone(), ctx)
+                .handle_message(self.sender.clone(), self.message.clone(), ctx)
                 .await;
 
             if let Some(rsvp) = self.rsvp.take() {
@@ -73,15 +73,6 @@ where
                     error!("Failed to send back response!"); // GRCOV-LINE
                 }) // GRCOV-LINE
             }
-        } else {
-            debug!("Stopping actor.");
-            // TODO: Manage pre_stop error
-            if actor.pre_stop(ctx).await.is_err() {
-                error!("Failed to stop actor!"); // GRCOV-LINE
-                let _ = ctx.emit_fail(Error::Stop).await; // GRCOV-LINE
-            }
-            ctx.stop().await;
-        }
     }
 }
 
@@ -124,7 +115,7 @@ where
         message: A::Message,
     ) -> Result<(), Error> {
         debug!("Telling message to actor from handle reference.");
-        let msg = ActorMessage::new(Some(message), sender, None);
+        let msg = ActorMessage::new(message, sender, None);
         if let Err(error) = self.sender.send(Box::new(msg)) {
             debug!("Failed to tell message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
@@ -144,7 +135,7 @@ where
         debug!("Asking message to actor from handle reference.");
         let (response_sender, response_receiver) = oneshot::channel();
         let msg =
-            ActorMessage::new(Some(message), sender, Some(response_sender));
+            ActorMessage::new(message, sender, Some(response_sender));
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to ask message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))
@@ -154,15 +145,6 @@ where
                 .await
                 .map_err(|error| Error::Send(error.to_string()))? // GRCOV-LINE
         }
-    }
-
-    /// Stop the actor.
-    pub(crate) async fn stop(&self, sender: ActorPath) {
-        debug!("Stopping actor from handle reference.");
-        let msg: ActorMessage<A> = ActorMessage::new(None, sender, None);
-        if let Err(error) = self.sender.send(Box::new(msg)) {
-            error!("Failed to stop actor! {}", error.to_string()); // GRCOV-LINE
-        } // GRCOV-LINE
     }
 
     /// Closes the sender.

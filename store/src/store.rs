@@ -315,8 +315,7 @@ pub trait PersistentActor:
     ) -> Result<(), ActorError> {
         if let Some(store) = ctx.get_child::<Store<Self>>("store").await {
             let _ = store.ask(StoreCommand::Snapshot(self.clone())).await?;
-            store.stop().await;
-            Ok(())
+            store.ask_stop().await
         } else {
             Err(ActorError::Store("Can't get store".to_string()))
         }
@@ -414,7 +413,7 @@ impl<P: PersistentActor> Store<P> {
 
         let bytes = if let Some(key_box) = &self.key_box {
             if let Ok(key) = key_box.decrypt() {
-                let bytes = bincode::serde::encode_to_vec(&event, bin_config)
+                let bytes = bincode::serde::encode_to_vec(event, bin_config)
                     .map_err(|e| {
                     error!("Can't encode event: {}", e);
                     Error::Store(format!("Can't encode event: {}", e))
@@ -424,7 +423,7 @@ impl<P: PersistentActor> Store<P> {
                 return Err(Error::Store("Can't decrypt key".to_owned()));
             }
         } else {
-            bincode::serde::encode_to_vec(&event, bin_config).map_err(|e| {
+            bincode::serde::encode_to_vec(event, bin_config).map_err(|e| {
                 error!("Can't encode event: {}", e);
                 Error::Store(format!("Can't encode event: {}", e))
             })?
@@ -458,7 +457,7 @@ impl<P: PersistentActor> Store<P> {
         let bin_config = bincode::config::standard();
 
         let bytes =
-            bincode::serde::encode_to_vec(&event, bin_config).map_err(|e| {
+            bincode::serde::encode_to_vec(event, bin_config).map_err(|e| {
                 error!("Can't encode event: {}", e);
                 Error::Store(format!("Can't encode event: {}", e))
             })?;
@@ -570,7 +569,7 @@ impl<P: PersistentActor> Store<P> {
         let bin_config = bincode::config::standard();
 
         let data =
-            bincode::serde::encode_to_vec(&actor, bin_config).map_err(|e| {
+            bincode::serde::encode_to_vec(actor, bin_config).map_err(|e| {
                 error!("Can't encode actor: {}", e);
                 Error::Store(format!("Can't encode actor: {}", e))
             })?;
@@ -969,8 +968,7 @@ mod tests {
                 .await
                 .unwrap();
             if let StoreResponse::Snapshotted = response {
-                store.stop().await;
-                Ok(())
+                store.ask_stop().await
             } else {
                 Err(ActorError::Store("Can't snapshot state".to_string()))
             }
@@ -1169,7 +1167,7 @@ mod tests {
 
         assert_eq!(value, TestResponse::Value(20));
 
-        actor_ref.stop().await;
+        actor_ref.ask_stop().await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }
 

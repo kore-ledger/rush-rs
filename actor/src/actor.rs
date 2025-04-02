@@ -9,11 +9,7 @@
 //!
 
 use crate::{
-    ActorPath, Error,
-    handler::HandleHelper,
-    runner::{ChildSender, InnerAction, InnerSender},
-    supervision::SupervisionStrategy,
-    system::SystemRef,
+    handler::HandleHelper, runner::{ChildStopSender, InnerAction, InnerSender, StopSender}, supervision::SupervisionStrategy, system::SystemRef, ActorPath, Error
 };
 
 use tokio::sync::{broadcast::Receiver as EventReceiver, mpsc, oneshot};
@@ -31,7 +27,8 @@ use std::fmt::Debug;
 /// The `ActorContext` is the context of the actor.
 /// It is passed to the actor when it is started, and can be used to interact with the actor
 /// system.
-pub struct ActorContext<A: Actor> {
+pub struct ActorContext<A: Actor + Handler<A>> {
+    stop: StopSender,
     /// The path of the actor.
     path: ActorPath,
     /// The actor system.
@@ -43,7 +40,7 @@ pub struct ActorContext<A: Actor> {
     /// Inner sender.
     inner_sender: InnerSender<A>,
     /// Child action senders.
-    child_senders: Vec<ChildSender>,
+    child_senders: Vec<ChildStopSender>,
     /// Cancellation token.
     token: CancellationToken,
 }
@@ -67,6 +64,7 @@ where
     /// Returns a new actor context.
     ///
     pub(crate) fn new(
+        stop: StopSender,
         path: ActorPath,
         system: SystemRef,
         token: CancellationToken,
@@ -74,6 +72,7 @@ where
         inner_sender: InnerSender<A>,
     ) -> Self {
         Self {
+            stop,
             path,
             system,
             error: None,
@@ -95,7 +94,6 @@ where
     {
         actor.pre_restart(self, error).await
     }
-
     /// Returns the actor reference.
     ///
     /// # Returns
@@ -115,7 +113,7 @@ where
     pub fn path(&self) -> &ActorPath {
         &self.path
     }
-
+    
     /// Returns the actor system.
     ///
     /// # Returns
@@ -133,7 +131,28 @@ where
     /// Returns the actor parent or None if the actor is root actor.
     ///
     pub async fn parent<P: Actor + Handler<P>>(&self) -> Option<ActorRef<P>> {
-        self.system.get_actor(&self.path().parent()).await
+        self.system.get_actor(&self.path.parent()).await
+    }
+
+    pub(crate) async fn stop_childs(&mut self) {
+        while let Some(sender) = self.child_senders.pop() {
+            let (stop_sender, stop_receiver) = oneshot::channel();
+            if sender.send(stop_sender).is_err() {
+                return ;
+            } else {
+                let _ = stop_receiver.await;
+            };
+        }
+    }
+
+    pub(crate) async fn remove_actor(&self) {
+        self.system.remove_actor(&self.path).await;
+    }
+
+    pub async fn stop(&self, sender: Option<oneshot::Sender<()>>) {
+        debug!("Stopping actor from handle reference.");
+
+        let _ = self.stop.send(sender);
     }
 
     /// Emits an event to subscribers.
@@ -217,15 +236,6 @@ where
         self.inner_sender
             .send(InnerAction::Fail(error.clone()))
             .map_err(|e| Error::Send(e.to_string())) // GRCOV-LINE
-    }
-
-    /// Stop the actor.
-    pub async fn stop(&mut self) {
-        while let Some(sender) = self.child_senders.pop() {
-            let _ = sender.send(ChildAction::Stop);
-        }
-        self.token.cancel();
-        self.system.remove_actor(self.path()).await;
     }
 
     /// Create a child actor under this actor.
@@ -377,8 +387,6 @@ pub enum ActorLifecycle {
 pub enum ChildAction {
     /// The child actor will stop.
     Stop,
-    /// The child actor will start.
-    Start,
     /// The child actor will restart.
     Restart,
     /// Delegate the action to the child supervision strategy.
@@ -410,7 +418,7 @@ pub enum ChildError {
 
 /// The `Actor` trait is the main trait that actors must implement.
 #[async_trait]
-pub trait Actor: Send + Sync + Sized + 'static {
+pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     /// The `Message` type is the type of the messages that the actor can receive.
     type Message: Message;
 
@@ -629,6 +637,8 @@ where
     sender: HandleHelper<A>,
     /// The actor event receiver.
     event_receiver: EventReceiver<<A as Actor>::Event>,
+    /// The actor stop sender.
+    stop_sender: StopSender
 }
 
 impl<A> ActorRef<A>
@@ -649,11 +659,13 @@ where
     pub fn new(
         path: ActorPath,
         sender: HandleHelper<A>,
+        stop_sender: StopSender,
         event_receiver: EventReceiver<<A as Actor>::Event>,
     ) -> Self {
         Self {
             path,
             sender,
+            stop_sender,
             event_receiver,
         }
     }
@@ -694,8 +706,23 @@ where
     /// This will stop the actor and remove it from the actor system.
     /// The actor will not be able to receive any more messages.
     ///
-    pub async fn stop(&self) {
-        self.sender.stop(self.path()).await;
+    pub async fn ask_stop(&self) -> Result<(), Error> {
+        debug!("Stopping actor from handle reference.");
+        let (response_sender, response_receiver) = oneshot::channel();
+
+        if self.stop_sender.send(Some(response_sender)).is_err() {
+            Ok(())
+        } else {
+            Ok(response_receiver
+                .await
+                .map_err(|error| Error::Send(error.to_string()))?)
+        }
+    }
+
+    pub async fn tell_stop(&self) {
+        debug!("Stopping actor from handle reference.");
+
+        let _ = self.stop_sender.send(None);
     }
 
     /// Returns the path of the actor.
@@ -740,6 +767,7 @@ where
         Self {
             path: self.path.clone(),
             sender: self.sender.clone(),
+            stop_sender: self.stop_sender.clone(),
             event_receiver: self.event_receiver.resubscribe(),
         }
     }
@@ -829,7 +857,7 @@ mod test {
         assert_eq!(event.0, 10);
         let event = recv.recv().await.unwrap();
         assert_eq!(event.0, 20);
-        actor_ref.stop().await;
+        actor_ref.ask_stop().await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }
 }

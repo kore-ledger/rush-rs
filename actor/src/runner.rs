@@ -12,7 +12,7 @@ use crate::{
         ChildErrorReceiver, ChildErrorSender, Handler,
     },
     //error::{error_box, ErrorBoxReceiver, ErrorHelper, SystemError},
-    handler::{HandleHelper, MailboxReceiver, MessageHandler, mailbox},
+    handler::{HandleHelper, MailboxReceiver, mailbox},
     supervision::{RetryStrategy, SupervisionStrategy},
     system::SystemRef,
 };
@@ -28,30 +28,32 @@ use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error};
 
-use std::collections::VecDeque;
-
 /// Inner sender and receiver types.
 pub type InnerSender<A> = mpsc::UnboundedSender<InnerAction<A>>;
 pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerAction<A>>;
 
 /// Child sender and receiver for child actions.
-pub type ChildSender = mpsc::UnboundedSender<ChildAction>;
-pub type ChildReceiver = mpsc::UnboundedReceiver<ChildAction>;
+pub type ChildStopSender = mpsc::UnboundedSender<oneshot::Sender<()>>;
+pub type ChildStopReceiver = mpsc::UnboundedReceiver<oneshot::Sender<()>>;
+
+pub type StopReceiver = mpsc::UnboundedReceiver<Option<oneshot::Sender<()>>>;
+pub type StopSender = mpsc::UnboundedSender<Option<oneshot::Sender<()>>>;
 
 /// Actor runner.
 pub(crate) struct ActorRunner<A: Actor> {
     path: ActorPath,
     actor: A,
     lifecycle: ActorLifecycle,
-    messages: VecDeque<Box<dyn MessageHandler<A>>>,
     receiver: MailboxReceiver<A>,
+    stop_receiver: StopReceiver, 
     event_sender: EventSender<A::Event>,
     error_sender: ChildErrorSender,
     parent_sender: Option<ChildErrorSender>,
     error_receiver: ChildErrorReceiver,
     inner_sender: InnerSender<A>,
     inner_receiver: InnerReceiver<A>,
-    child_receiver: ChildReceiver,
+    child_stop_receiver: ChildStopReceiver,
+    stop_signal: bool,
     token: CancellationToken,
 }
 
@@ -64,40 +66,43 @@ where
         path: ActorPath,
         actor: A,
         parent_sender: Option<ChildErrorSender>,
-    ) -> (Self, ActorRef<A>, ChildSender) {
+    ) -> (Self, ActorRef<A>, ChildStopSender, StopSender,) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
+        let (stop_sender, stop_receiver) = mpsc::unbounded_channel();
         let (error_sender, error_receiver) = mpsc::unbounded_channel();
-        let (event_sender, event_receiver) = broadcast::channel(100);
+        let (event_sender, event_receiver) = broadcast::channel(1000);
         let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
-        let (child_sender, child_receiver) = mpsc::unbounded_channel();
+        let (child_stop_sender, child_stop_receiver) = mpsc::unbounded_channel();
         let helper = HandleHelper::new(sender);
 
         //let error_helper = ErrorHelper::new(error_sender);
-        let actor_ref = ActorRef::new(path.clone(), helper, event_receiver);
+        let actor_ref = ActorRef::new(path.clone(), helper, stop_sender.clone(), event_receiver);
         let token = CancellationToken::new();
         let runner = ActorRunner {
             path,
             actor,
             lifecycle: ActorLifecycle::Created,
-            messages: VecDeque::new(),
             receiver,
+            stop_receiver,
             event_sender,
             error_sender,
             parent_sender,
             error_receiver,
             inner_sender,
             inner_receiver,
-            child_receiver,
+            child_stop_receiver,
             token,
+            stop_signal: false,
         };
-        (runner, actor_ref, child_sender)
+        (runner, actor_ref, child_stop_sender, stop_sender)
     }
 
     /// Init the actor runner.
     pub(crate) async fn init(
         &mut self,
         system: SystemRef,
+        stop_sender: StopSender,
         mut sender: Option<oneshot::Sender<bool>>,
     ) {
         debug!("Initializing actor {} runner.", &self.path);
@@ -105,6 +110,7 @@ where
         // Create the actor context.
         debug!("Creating actor {} context.", &self.path);
         let mut ctx: ActorContext<A> = ActorContext::new(
+            stop_sender,
             self.path.clone(),
             system.clone(),
             self.token.clone(),
@@ -207,26 +213,37 @@ where
     ///
     pub(crate) async fn run(&mut self, ctx: &mut ActorContext<A>) {
         debug!("Running actor {}.", &self.path);
+        
         loop {
-            if ctx.error().is_none() {
-                if let Some(mut msg) = self.messages.pop_front() {
-                    msg.handle(&mut self.actor, ctx).await;
-                }
-            }
             select! {
-                // Gets message handler from mailbox receiver and push it to the messages queue.
-                msg = self.receiver.recv() => {
-                    if let Some(msg) = msg {
-                        //msg.handle(&mut self.actor, ctx).await;
-                        self.messages.push_back(msg);
-                    } else {
-                        debug!("Channel for Actor {} is closed. Stopping actor.", &self.path);
-                        self.lifecycle = ActorLifecycle::Stopped;
-                        break;
+                _ = self.token.cancelled(), if !self.stop_signal => {
+                    debug!("Actor {} is stopped.", &self.path);
+                    ctx.stop(None).await;
+                    self.stop_signal = true;
+                }
+                stop = self.stop_receiver.recv() => {
+                    debug!("Stopping actor.");
+                    if self.actor.pre_stop(ctx).await.is_err() {
+                        error!("Failed to stop actor!");
+                        let _ = ctx.emit_fail(Error::Stop).await;
                     }
+
+                    ctx.stop_childs().await;
+                    ctx.remove_actor().await;
+
+                    if let Some(Some(stop)) = stop {
+                        let _ = stop.send(());
+                    }
+                    self.token.cancel();
+
+
+                    if let ActorLifecycle::Started =  self.lifecycle {
+                        self.lifecycle = ActorLifecycle::Stopped;
+                    }
+                    break;
                 }
                 // Handle error from `ErrorBoxReceiver`.
-                error =  self.error_receiver.recv() => {
+                error =  self.error_receiver.recv(), if !self.stop_signal => {
                     if let Some(error) = error {
                         match error {
                             ChildError::Error { error } => self.actor.on_child_error(error, ctx).await,
@@ -238,29 +255,32 @@ where
                             },
                         }
                     } else {
-                        self.lifecycle = ActorLifecycle::Stopped;
-                        break;
+                        ctx.stop(None).await;
+                        self.stop_signal = true;
                     }
                 }
                 // Handle inner event from `inner_receiver`.
-                recv = self.inner_receiver.recv() => {
+                recv = self.inner_receiver.recv(), if !self.stop_signal => {
                     if let Some(event) = recv {
                         self.inner_handle(event, ctx).await;
                     } else {
-                        break;
+                        ctx.stop(None).await;
+                        self.stop_signal = true;
                     }
                 }
                 // Handle child action from `child_receiver`.
-                action = self.child_receiver.recv() => {
-                    if let Some(ChildAction::Stop) = action {
-                        self.lifecycle = ActorLifecycle::Stopped;
-                        ctx.stop().await;
-                    }
+                stop_receiver = self.child_stop_receiver.recv(), if !self.stop_signal => {
+                    ctx.stop(stop_receiver).await;
+                    self.stop_signal = true;
                 }
-                _ = self.token.cancelled() => {
-                    debug!("Actor {} is stopped.", &self.path);
-                    self.lifecycle = ActorLifecycle::Stopped;
-                    break;
+                // Gets message handler from mailbox receiver and push it to the messages queue.
+                msg = self.receiver.recv(), if !self.stop_signal => {
+                    if let Some(mut msg) = msg {
+                        msg.handle(&mut self.actor, ctx).await;
+                    } else {
+                        ctx.stop(None).await;
+                        self.stop_signal = true;
+                    }
                 }
             }
         }
@@ -320,23 +340,15 @@ where
                         // Clean error.
                         ctx.clean_error();
                         match action {
-                            ChildAction::Stop => {
-                                //self.lifecycle = ActorLifecycle::Stopped;
-                                ctx.stop().await;
-                            }
-                            ChildAction::Start => {
-                                self.lifecycle = ActorLifecycle::Started;
-                                self.token.cancel();
-                            }
+                            ChildAction::Stop => {}
                             ChildAction::Restart | ChildAction::Delegate => {
                                 self.lifecycle = ActorLifecycle::Restarted;
-                                self.token.cancel();
                             }
                         }
                     }
-                } else {
-                    ctx.stop().await;
-                }
+                } 
+                ctx.stop(None).await;
+                self.stop_signal = true;
             }
         }
     }
@@ -406,7 +418,7 @@ mod tests {
 
     use crate::{
         Error,
-        actor::{Actor, ActorContext, Event, Handler, Message, Response},
+        actor::{Actor, ActorContext, Event, Handler, Message},
         supervision::{FixedIntervalStrategy, Strategy, SupervisionStrategy},
         system::SystemRef,
     };
@@ -428,11 +440,6 @@ mod tests {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct TestResponse;
-
-    impl Response for TestResponse {}
-
-    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct TestEvent;
 
     impl Event for TestEvent {}
@@ -445,7 +452,7 @@ mod tests {
     #[async_trait]
     impl Actor for TestActor {
         type Message = TestMessage;
-        type Response = TestResponse;
+        type Response = ();
         type Event = TestEvent;
 
         fn supervision_strategy() -> SupervisionStrategy {
@@ -492,15 +499,15 @@ mod tests {
             _sender: ActorPath,
             msg: TestMessage,
             ctx: &mut ActorContext<Self>,
-        ) -> Result<TestResponse, Error> {
+        ) -> Result<(), Error> {
             debug!("Handling empty message");
             match msg {
                 TestMessage(ErrorMessage::Stop) => {
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                     debug!("Actor stopped");
                 }
             }
-            Ok(TestResponse)
+            Ok(())
         }
     }
 
@@ -512,12 +519,13 @@ mod tests {
         let system = SystemRef::new(event_sender);
 
         let actor = TestActor { failed: false };
-        let (mut runner, actor_ref, _) =
+        let (mut runner, actor_ref, _sender, stop_sender) =
             ActorRunner::create(ActorPath::from("/user/test"), actor, None);
         let inner_system = system.clone();
+
         // Init the actor runner.
         tokio::spawn(async move {
-            runner.init(inner_system, None).await;
+            runner.init(inner_system, stop_sender, None).await;
         });
         tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -526,7 +534,7 @@ mod tests {
             .await
             .unwrap();
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
         assert!(logs_contain("Actor /user/test is terminated"));
 
@@ -539,12 +547,13 @@ mod tests {
 
         let actor = TestActor { failed: true };
 
-        let (mut runner, actor_ref, _) =
+        let (mut runner, actor_ref, _, stop_sender) =
             ActorRunner::create(ActorPath::from("/user/test"), actor, None);
         let inner_system = system.clone();
+
         // Init the actor runner.
         tokio::spawn(async move {
-            runner.init(inner_system, None).await;
+            runner.init(inner_system, stop_sender, None).await;
         });
 
         tokio::time::sleep(Duration::from_secs(2)).await;
