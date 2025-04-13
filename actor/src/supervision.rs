@@ -5,12 +5,8 @@
 //!
 
 use std::{
-    fmt::Debug,
-    sync::{Arc, Mutex},
-    time::Duration,
+    collections::VecDeque, fmt::Debug, sync::{Arc, Mutex}, time::Duration
 };
-
-use backoff::backoff::Backoff as InnerBackoff;
 
 /// Trait to define a RetryStrategy. You can use this trait to define your
 /// custom retry strategy.
@@ -37,7 +33,7 @@ pub enum SupervisionStrategy {
 pub enum Strategy {
     NoInterval(NoIntervalStrategy),
     FixedInterval(FixedIntervalStrategy),
-    ExponentialBackoff(ExponentialBackoffStrategy),
+    CustomIntervalStrategy(CustomIntervalStrategy)
 }
 
 impl RetryStrategy for Strategy {
@@ -45,7 +41,7 @@ impl RetryStrategy for Strategy {
         match self {
             Strategy::NoInterval(strategy) => strategy.max_retries(),
             Strategy::FixedInterval(strategy) => strategy.max_retries(),
-            Strategy::ExponentialBackoff(strategy) => strategy.max_retries(),
+            Strategy::CustomIntervalStrategy(strategy) => strategy.max_retries(),
         }
     }
 
@@ -53,7 +49,7 @@ impl RetryStrategy for Strategy {
         match self {
             Strategy::NoInterval(strategy) => strategy.next_backoff(),
             Strategy::FixedInterval(strategy) => strategy.next_backoff(),
-            Strategy::ExponentialBackoff(strategy) => strategy.next_backoff(),
+            Strategy::CustomIntervalStrategy(strategy) => strategy.next_backoff(),
         }
     }
 }
@@ -117,34 +113,25 @@ impl RetryStrategy for FixedIntervalStrategy {
     }
 }
 
-/// A retry strategy that retries an actor with an exponential backoff wait
-/// period before retrying.
 #[derive(Debug, Default, Clone)]
-pub struct ExponentialBackoffStrategy {
-    /// Maximum number of retries before permanently failing an actor.
-    max_retries: usize,
-    /// Inner exponential backoff strategy.
-    inner: Arc<Mutex<backoff::ExponentialBackoff>>,
+pub struct CustomIntervalStrategy {
+    durations: VecDeque<Duration>,
+    max_retries: usize
 }
 
-/// Implementation of exponential backoff strategy.
-impl ExponentialBackoffStrategy {
-    pub fn new(max_retries: usize) -> Self {
-        ExponentialBackoffStrategy {
-            max_retries,
-            inner: Arc::new(Mutex::new(backoff::ExponentialBackoff::default())),
-        }
+impl CustomIntervalStrategy {
+    pub fn new(durations: VecDeque<Duration>) -> Self {
+        Self { durations: durations.clone(), max_retries: durations.len() }
     }
 }
 
-/// Implementation of `RetryStrategy` for `ExponentialBackoffStrategy`.
-impl RetryStrategy for ExponentialBackoffStrategy {
+impl RetryStrategy for CustomIntervalStrategy {
     fn max_retries(&self) -> usize {
         self.max_retries
     }
 
     fn next_backoff(&mut self) -> Option<Duration> {
-        self.inner.lock().ok().and_then(|mut eb| eb.next_backoff())
+        self.durations.pop_front()
     }
 }
 
@@ -169,9 +156,12 @@ mod tests {
     }
 
     #[test]
-    fn test_exponential_backoff_strategy() {
-        let mut strategy = ExponentialBackoffStrategy::new(3);
-        assert_eq!(strategy.max_retries(), 3);
+    fn test_exponential_custom_strategy() {     
+        let mut strategy = CustomIntervalStrategy::new(VecDeque::from([Duration::from_secs(1), Duration::from_secs(2), Duration::from_secs(3)]));
+        assert_eq!(strategy.max_retries(), 3);        
         assert!(strategy.next_backoff().is_some());
+        assert!(strategy.next_backoff().is_some());
+        assert!(strategy.next_backoff().is_some());
+        assert!(strategy.next_backoff().is_none());
     }
 }

@@ -40,7 +40,7 @@ pub use sink::{Sink, Subscriber};
 
 pub use retries::{RetryActor, RetryMessage};
 pub use supervision::{
-    ExponentialBackoffStrategy, FixedIntervalStrategy, NoIntervalStrategy,
+    CustomIntervalStrategy, FixedIntervalStrategy, NoIntervalStrategy,
     RetryStrategy, Strategy, SupervisionStrategy,
 };
 pub use system::{ActorSystem, SystemEvent, SystemRef, SystemRunner};

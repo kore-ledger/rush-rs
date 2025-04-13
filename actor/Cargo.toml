@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-backoff = { workspace = true }
 bincode = { workspace = true }
 futures = { workspace = true, features = ["async-await"]}
 serde = { workspace = true, features = ["derive"] }

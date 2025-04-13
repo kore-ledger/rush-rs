@@ -15,7 +15,6 @@ rust-version = "1.85.0"
 
 [workspace.dependencies]
 async-trait = { version = "0.1.88" }
-backoff = "0.4"
 bincode = {version = "2.0.1", features = ["serde"] }
 futures =  { version = "0.3.31", features = ["async-await"] }
 serde = { version = "1.0.219", features = ["derive"] }
