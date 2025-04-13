@@ -61,18 +61,18 @@ where
 {
     async fn handle(&mut self, actor: &mut A, ctx: &mut ActorContext<A>) {
         debug!("Handling internal message.");
-        
-            debug!("Handling message.");
-            let result = actor
-                .handle_message(self.sender.clone(), self.message.clone(), ctx)
-                .await;
 
-            if let Some(rsvp) = self.rsvp.take() {
-                debug!("Sending back response (if any).");
-                rsvp.send(result).unwrap_or_else(|_failed| {
-                    error!("Failed to send back response!"); // GRCOV-LINE
-                }) // GRCOV-LINE
-            }
+        debug!("Handling message.");
+        let result = actor
+            .handle_message(self.sender.clone(), self.message.clone(), ctx)
+            .await;
+
+        if let Some(rsvp) = self.rsvp.take() {
+            debug!("Sending back response (if any).");
+            rsvp.send(result).unwrap_or_else(|_failed| {
+                error!("Failed to send back response!"); // GRCOV-LINE
+            }) // GRCOV-LINE
+        }
     }
 }
 
@@ -134,8 +134,7 @@ where
     ) -> Result<A::Response, Error> {
         debug!("Asking message to actor from handle reference.");
         let (response_sender, response_receiver) = oneshot::channel();
-        let msg =
-            ActorMessage::new(message, sender, Some(response_sender));
+        let msg = ActorMessage::new(message, sender, Some(response_sender));
         if let Err(error) = self.sender.send(Box::new(msg)) {
             error!("Failed to ask message! {}", error.to_string()); // GRCOV-START
             Err(Error::Send(error.to_string()))

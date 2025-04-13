@@ -86,7 +86,7 @@ impl Handler<TestActor> for TestActor {
             TestCommand::Decrement(value) => {
                 self.state -= value;
                 ctx.publish_event(TestEvent(self.state)).await.unwrap();
-                
+
                 let child: ActorRef<ChildActor> =
                     ctx.get_child("child").await.unwrap();
                 child
@@ -182,15 +182,17 @@ impl Handler<ChildActor> for ChildActor {
                     Ok(ChildResponse::None)
                 } else if value > 10 && value < 100 {
                     ctx.emit_error(Error::Functional(
-                            "Value is too high".to_owned(),
-                        ))
-                        .await.unwrap();
+                        "Value is too high".to_owned(),
+                    ))
+                    .await
+                    .unwrap();
                     Ok(ChildResponse::State(100))
                 } else {
                     ctx.emit_fail(Error::Functional(
-                            "Value produces a fault".to_owned(),
-                        ))
-                        .await.unwrap();
+                        "Value produces a fault".to_owned(),
+                    ))
+                    .await
+                    .unwrap();
                     Ok(ChildResponse::None)
                 }
             }

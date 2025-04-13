@@ -4,9 +4,7 @@
 //! Supervision strategies
 //!
 
-use std::{
-    collections::VecDeque, fmt::Debug, sync::{Arc, Mutex}, time::Duration
-};
+use std::{collections::VecDeque, fmt::Debug, time::Duration};
 
 /// Trait to define a RetryStrategy. You can use this trait to define your
 /// custom retry strategy.
@@ -33,7 +31,7 @@ pub enum SupervisionStrategy {
 pub enum Strategy {
     NoInterval(NoIntervalStrategy),
     FixedInterval(FixedIntervalStrategy),
-    CustomIntervalStrategy(CustomIntervalStrategy)
+    CustomIntervalStrategy(CustomIntervalStrategy),
 }
 
 impl RetryStrategy for Strategy {
@@ -41,7 +39,9 @@ impl RetryStrategy for Strategy {
         match self {
             Strategy::NoInterval(strategy) => strategy.max_retries(),
             Strategy::FixedInterval(strategy) => strategy.max_retries(),
-            Strategy::CustomIntervalStrategy(strategy) => strategy.max_retries(),
+            Strategy::CustomIntervalStrategy(strategy) => {
+                strategy.max_retries()
+            }
         }
     }
 
@@ -49,7 +49,9 @@ impl RetryStrategy for Strategy {
         match self {
             Strategy::NoInterval(strategy) => strategy.next_backoff(),
             Strategy::FixedInterval(strategy) => strategy.next_backoff(),
-            Strategy::CustomIntervalStrategy(strategy) => strategy.next_backoff(),
+            Strategy::CustomIntervalStrategy(strategy) => {
+                strategy.next_backoff()
+            }
         }
     }
 }
@@ -116,12 +118,15 @@ impl RetryStrategy for FixedIntervalStrategy {
 #[derive(Debug, Default, Clone)]
 pub struct CustomIntervalStrategy {
     durations: VecDeque<Duration>,
-    max_retries: usize
+    max_retries: usize,
 }
 
 impl CustomIntervalStrategy {
     pub fn new(durations: VecDeque<Duration>) -> Self {
-        Self { durations: durations.clone(), max_retries: durations.len() }
+        Self {
+            durations: durations.clone(),
+            max_retries: durations.len(),
+        }
     }
 }
 
@@ -156,9 +161,13 @@ mod tests {
     }
 
     #[test]
-    fn test_exponential_custom_strategy() {     
-        let mut strategy = CustomIntervalStrategy::new(VecDeque::from([Duration::from_secs(1), Duration::from_secs(2), Duration::from_secs(3)]));
-        assert_eq!(strategy.max_retries(), 3);        
+    fn test_exponential_custom_strategy() {
+        let mut strategy = CustomIntervalStrategy::new(VecDeque::from([
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(3),
+        ]));
+        assert_eq!(strategy.max_retries(), 3);
         assert!(strategy.next_backoff().is_some());
         assert!(strategy.next_backoff().is_some());
         assert!(strategy.next_backoff().is_some());

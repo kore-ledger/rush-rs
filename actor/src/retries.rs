@@ -117,9 +117,8 @@ where
                                 tokio::spawn(async move {
                                     debug!("Backoff for {:?}", &duration);
                                     tokio::time::sleep(duration).await;
-                                    let _ = actor
-                                        .tell(RetryMessage::Retry)
-                                        .await;
+                                    let _ =
+                                        actor.tell(RetryMessage::Retry).await;
                                 });
                             }
                         } else {

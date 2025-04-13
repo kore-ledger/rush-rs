@@ -415,9 +415,9 @@ impl<P: PersistentActor> Store<P> {
             if let Ok(key) = key_box.decrypt() {
                 let bytes = bincode::serde::encode_to_vec(event, bin_config)
                     .map_err(|e| {
-                    error!("Can't encode event: {}", e);
-                    Error::Store(format!("Can't encode event: {}", e))
-                })?;
+                        error!("Can't encode event: {}", e);
+                        Error::Store(format!("Can't encode event: {}", e))
+                    })?;
                 self.encrypt(key.as_ref(), &bytes)?
             } else {
                 return Err(Error::Store("Can't decrypt key".to_owned()));

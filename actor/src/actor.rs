@@ -9,7 +9,11 @@
 //!
 
 use crate::{
-    handler::HandleHelper, runner::{ChildStopSender, InnerAction, InnerSender, StopSender}, supervision::SupervisionStrategy, system::SystemRef, ActorPath, Error
+    ActorPath, Error,
+    handler::HandleHelper,
+    runner::{ChildStopSender, InnerAction, InnerSender, StopSender},
+    supervision::SupervisionStrategy,
+    system::SystemRef,
 };
 
 use tokio::sync::{broadcast::Receiver as EventReceiver, mpsc, oneshot};
@@ -113,7 +117,7 @@ where
     pub fn path(&self) -> &ActorPath {
         &self.path
     }
-    
+
     /// Returns the actor system.
     ///
     /// # Returns
@@ -138,7 +142,7 @@ where
         while let Some(sender) = self.child_senders.pop() {
             let (stop_sender, stop_receiver) = oneshot::channel();
             if sender.send(stop_sender).is_err() {
-                return ;
+                return;
             } else {
                 let _ = stop_receiver.await;
             };
@@ -638,7 +642,7 @@ where
     /// The actor event receiver.
     event_receiver: EventReceiver<<A as Actor>::Event>,
     /// The actor stop sender.
-    stop_sender: StopSender
+    stop_sender: StopSender,
 }
 
 impl<A> ActorRef<A>

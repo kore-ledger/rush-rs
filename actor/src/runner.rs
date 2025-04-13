@@ -45,7 +45,7 @@ pub(crate) struct ActorRunner<A: Actor> {
     actor: A,
     lifecycle: ActorLifecycle,
     receiver: MailboxReceiver<A>,
-    stop_receiver: StopReceiver, 
+    stop_receiver: StopReceiver,
     event_sender: EventSender<A::Event>,
     error_sender: ChildErrorSender,
     parent_sender: Option<ChildErrorSender>,
@@ -66,18 +66,24 @@ where
         path: ActorPath,
         actor: A,
         parent_sender: Option<ChildErrorSender>,
-    ) -> (Self, ActorRef<A>, ChildStopSender, StopSender,) {
+    ) -> (Self, ActorRef<A>, ChildStopSender, StopSender) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
         let (stop_sender, stop_receiver) = mpsc::unbounded_channel();
         let (error_sender, error_receiver) = mpsc::unbounded_channel();
         let (event_sender, event_receiver) = broadcast::channel(1000);
         let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
-        let (child_stop_sender, child_stop_receiver) = mpsc::unbounded_channel();
+        let (child_stop_sender, child_stop_receiver) =
+            mpsc::unbounded_channel();
         let helper = HandleHelper::new(sender);
 
         //let error_helper = ErrorHelper::new(error_sender);
-        let actor_ref = ActorRef::new(path.clone(), helper, stop_sender.clone(), event_receiver);
+        let actor_ref = ActorRef::new(
+            path.clone(),
+            helper,
+            stop_sender.clone(),
+            event_receiver,
+        );
         let token = CancellationToken::new();
         let runner = ActorRunner {
             path,
@@ -213,7 +219,7 @@ where
     ///
     pub(crate) async fn run(&mut self, ctx: &mut ActorContext<A>) {
         debug!("Running actor {}.", &self.path);
-        
+
         loop {
             select! {
                 _ = self.token.cancelled(), if !self.stop_signal => {
@@ -346,7 +352,7 @@ where
                             }
                         }
                     }
-                } 
+                }
                 ctx.stop(None).await;
                 self.stop_signal = true;
             }
