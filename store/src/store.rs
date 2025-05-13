@@ -428,6 +428,7 @@ impl<P: PersistentActor> Store<P> {
                 Error::Store(format!("Can't encode event: {}", e))
             })?
         };
+
         self.events
             .put(&format!("{:020}", self.event_counter), &bytes)
     }
@@ -456,17 +457,29 @@ impl<P: PersistentActor> Store<P> {
         }
         let bin_config = bincode::config::standard();
 
-        let bytes =
+        let bytes = if let Some(key_box) = &self.key_box {
+            if let Ok(key) = key_box.decrypt() {
+                let bytes = bincode::serde::encode_to_vec(event, bin_config)
+                    .map_err(|e| {
+                        error!("Can't encode event: {}", e);
+                        Error::Store(format!("Can't encode event: {}", e))
+                    })?;
+                self.encrypt(key.as_ref(), &bytes)?
+            } else {
+                return Err(Error::Store("Can't decrypt key".to_owned()));
+            }
+        } else {
             bincode::serde::encode_to_vec(event, bin_config).map_err(|e| {
                 error!("Can't encode event: {}", e);
                 Error::Store(format!("Can't encode event: {}", e))
-            })?;
+            })?
+        };
 
-        if self.event_counter > 0 {
-            self.event_counter = 0;
+        if self.event_counter == 0 {
+            self.event_counter = 1;
         }
+
         self.snapshot(state)?;
-        self.event_counter += 1;
         self.events
             .put(&format!("{:020}", self.event_counter), &bytes)
     }
