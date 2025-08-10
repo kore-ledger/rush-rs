@@ -1,3 +1,17 @@
+[package]
+name = "rush"
+version = "0.7.1"
+edition = "2024"
+
+[dependencies]
+actor = { path = "actor" }
+store = { path = "store" }
+rocksdb_db = { path = "databases/rocksdb_db", optional = true}
+sqlite_db = { path = "databases/sqlite_db", optional = true }
+
+[features]
+default = ["rocksdb_db"]
+
 [workspace]
 members = [
     "actor",
@@ -9,7 +23,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.4"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.85.0"
 
