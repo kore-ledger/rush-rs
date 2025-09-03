@@ -41,7 +41,7 @@ impl ActorSystem {
             CancellationToken::new()
         };
 
-        let (event_sender, event_receiver) = mpsc::channel(100);
+        let (event_sender, event_receiver) = mpsc::channel(10000);
         let system = SystemRef::new(event_sender);
         let runner = SystemRunner::new(token, event_receiver);
         (system, runner)

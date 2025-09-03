@@ -6,7 +6,7 @@
 
 use store::{
     Error,
-    database::{Collection, DbManager},
+    database::{Collection, DbManager, State},
 };
 
 use rocksdb::{
@@ -69,7 +69,7 @@ impl RocksDbManager {
     }
 }
 
-impl DbManager<RocksDbStore> for RocksDbManager {
+impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
     fn create_collection(
         &self,
         name: &str,
@@ -87,10 +87,21 @@ impl DbManager<RocksDbStore> for RocksDbManager {
         })
     }
 
-    fn stop(self) -> Result<(), Error> {
-        self.db
-            .flush()
-            .map_err(|e| Error::Store(format!("{:?}", e)))
+    fn create_state(
+        &self,
+        name: &str,
+        prefix: &str,
+    ) -> Result<RocksDbStore, Error> {
+        if self.db.cf_handle(name).is_none() {
+            self.db
+                .create_cf(name, &self.opts)
+                .map_err(|e| Error::CreateStore(format!("{:?}", e)))?;
+        }
+        Ok(RocksDbStore {
+            name: name.to_owned(),
+            prefix: prefix.to_owned(),
+            store: self.db.clone(),
+        })
     }
 }
 
@@ -99,7 +110,94 @@ pub struct RocksDbStore {
     name: String,
     prefix: String,
     store: Arc<DB>,
-    //column: ColumnFamily,
+}
+
+impl State for RocksDbStore {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn get(&self) -> Result<Vec<u8>, Error> {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            let result = self
+                .store
+                .get_cf(&handle, self.prefix.clone())
+                .map_err(|e| Error::Get(format!("{:?}", e)))?;
+            match result {
+                Some(value) => Ok(value),
+                _ => Err(Error::EntryNotFound(
+                    "Query returned no rows".to_owned(),
+                )),
+            }
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
+
+    fn put(&mut self, data: &[u8]) -> Result<(), Error> {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            Ok(self
+                .store
+                .put_cf(&handle, self.prefix.clone(), data)
+                .map_err(|e| Error::Get(format!("{:?}", e)))?)
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
+
+    fn del(&mut self) -> Result<(), Error> {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            Ok(self
+                .store
+                .delete_cf(&handle, self.prefix.clone())
+                .map_err(|e| Error::Get(format!("{:?}", e)))?)
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
+
+    fn purge(&mut self) -> Result<(), Error> {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            let iter = self.store.iterator_cf(&handle, IteratorMode::Start);
+            for (key, _) in iter.flatten() {
+                let key = String::from_utf8(key.to_vec()).map_err(|e| {
+                    Error::Store(format!(
+                        "Can not convert key to string: {}",
+                        e
+                    ))
+                })?;
+                if key.starts_with(&self.prefix) {
+                    self.store
+                        .delete_cf(&handle, key)
+                        .map_err(|e| Error::Get(format!("{:?}", e)))?;
+                }
+            }
+            Ok(())
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
+
+    fn flush(&self) -> Result<(), Error> {
+        if let Some(handle) = self.store.cf_handle(&self.name) {
+            Ok(self
+                .store
+                .flush_cf(&handle)
+                .map_err(|e| Error::Get(format!("{:?}", e)))?)
+        } else {
+            Err(Error::Store(
+                "RocksDB column for the store does not exist.".to_owned(),
+            ))
+        }
+    }
 }
 
 impl Collection for RocksDbStore {

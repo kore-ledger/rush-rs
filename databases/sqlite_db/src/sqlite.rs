@@ -10,7 +10,7 @@
 
 use store::{
     Error,
-    database::{Collection, DbManager},
+    database::{Collection, DbManager, State},
 };
 
 use rusqlite::{Connection, OpenFlags, Result as SQLiteResult, params};
@@ -50,7 +50,30 @@ impl SqliteManager {
     }
 }
 
-impl DbManager<SqliteCollection> for SqliteManager {
+impl DbManager<SqliteCollection, SqliteCollection> for SqliteManager {
+    fn create_state(
+        &self,
+        identifier: &str,
+        prefix: &str,
+    ) -> Result<SqliteCollection, Error> {
+        // Create statement to create a table.
+        let stmt = format!(
+            "CREATE TABLE IF NOT EXISTS {} (prefix TEXT NOT NULL, value \
+            BLOB NOT NULL, PRIMARY KEY (prefix))",
+            identifier
+        );
+
+        {
+            let conn = self.conn.lock().expect("open connection");
+
+            conn.execute(stmt.as_str(), ()).map_err(|e| {
+                Error::CreateStore(format!("fail SQLite create table: {}", e))
+            })?;
+        }
+
+        Ok(SqliteCollection::new(self.conn.clone(), identifier, prefix))
+    }
+
     fn create_collection(
         &self,
         identifier: &str,
@@ -115,6 +138,58 @@ impl SqliteCollection {
             values.push((key, row.get(1)?));
         }
         Ok(Box::new(values.into_iter()))
+    }
+}
+
+impl State for SqliteCollection {
+    fn get(&self) -> Result<Vec<u8>, Error> {
+        let conn = self.conn.lock().map_err(|e| {
+            Error::Store(format!("sqlite open connection: {}", e))
+        })?;
+        let query =
+            format!("SELECT value FROM {} WHERE prefix = ?1", &self.table);
+        let row: Vec<u8> = conn
+            .query_row(&query, params![self.prefix], |row| row.get(0))
+            .map_err(|e| Error::EntryNotFound(e.to_string()))?;
+
+        Ok(row)
+    }
+
+    fn put(&mut self, data: &[u8]) -> Result<(), Error> {
+        let conn = self.conn.lock().map_err(|e| {
+            Error::Store(format!("sqlite open connection: {}", e))
+        })?;
+        let stmt = format!(
+            "INSERT OR REPLACE INTO {} (prefix, value) VALUES (?1, ?2)",
+            &self.table
+        );
+        conn.execute(&stmt, params![self.prefix, data])
+            .map_err(|e| Error::Store(format!("sqlite insert error: {}", e)))?;
+        Ok(())
+    }
+
+    fn del(&mut self) -> Result<(), Error> {
+        let conn = self.conn.lock().map_err(|e| {
+            Error::Store(format!("SQLITE open connection: {}", e))
+        })?;
+        let stmt = format!("DELETE FROM {} WHERE prefix = ?1", &self.table);
+        conn.execute(&stmt, params![self.prefix,])
+            .map_err(|e| Error::EntryNotFound(e.to_string()))?;
+        Ok(())
+    }
+
+    fn purge(&mut self) -> Result<(), Error> {
+        let conn = self.conn.lock().map_err(|e| {
+            Error::Store(format!("SQLITE open connection: {}", e))
+        })?;
+        let stmt = format!("DELETE FROM {} WHERE prefix = ?1", &self.table);
+        conn.execute(&stmt, params![self.prefix])
+            .map_err(|e| Error::Store(format!("SQLITE purge error: {}", e)))?;
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        self.table.as_str()
     }
 }
 

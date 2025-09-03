@@ -71,7 +71,7 @@ where
         let (sender, receiver) = mailbox();
         let (stop_sender, stop_receiver) = mpsc::unbounded_channel();
         let (error_sender, error_receiver) = mpsc::unbounded_channel();
-        let (event_sender, event_receiver) = broadcast::channel(1000);
+        let (event_sender, event_receiver) = broadcast::channel(10000);
         let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
         let (child_stop_sender, child_stop_receiver) =
             mpsc::unbounded_channel();
