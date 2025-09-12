@@ -1,5 +1,29 @@
+[package]
+name = "rush"
+version = "0.6.5"
+edition = "2024"
+
+[dependencies]
+actor = { path = "actor" }
+store = { path = "store" }
+rocksdb_db = { path = "databases/rocksdb_db", optional = true}
+sqlite_db = { path = "databases/sqlite_db", optional = true }
+
+[features]
+default = ["sqlite"]
+all = ["sqlite", "rockdb"]
+rockdb = ["rocksdb_db"]
+sqlite = ["sqlite_db"]
+
 [workspace]
 members = [
+    "actor",
+    "store",
+    "databases/rocksdb_db",
+    "databases/sqlite_db",
+]
+default-members = [
+    ".",
     "actor",
     "store",
     "databases/rocksdb_db",
