@@ -102,11 +102,10 @@ where
                         );
 
                         // Send retry to parent.
-                        if let Some(child) = ctx.get_child::<T>("target").await
+                        if let Some(child) = ctx.get_child::<T>("target").await && child.tell(self.message.clone()).await.is_err() 
                         {
-                            if child.tell(self.message.clone()).await.is_err() {
-                                error!("Cannot initiate retry to send message");
-                            }
+                            error!("Cannot initiate retry to send message");
+                            
                         }
 
                         if let Some(actor) = ctx.reference().await {
@@ -149,6 +148,8 @@ where
 
 #[cfg(test)]
 mod tests {
+
+    use tokio_util::sync::CancellationToken;
 
     use super::*;
 
@@ -266,7 +267,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_actor() {
-        let (system, mut runner) = ActorSystem::create(None);
+        let (system, mut runner) = ActorSystem::create(CancellationToken::new());
 
         tokio::spawn(async move {
             runner.run().await;

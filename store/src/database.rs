@@ -8,9 +8,10 @@ use crate::error::Error;
 use tracing::debug;
 
 /// A trait representing a database manager to create collections
-pub trait DbManager<C>: Sync + Send + Clone
+pub trait DbManager<C, S>: Sync + Send + Clone
 where
     C: Collection + 'static,
+    S: State + 'static,
 {
     /// Create collection.
     ///
@@ -25,6 +26,8 @@ where
     ///
     fn create_collection(&self, name: &str, prefix: &str) -> Result<C, Error>;
 
+    fn create_state(&self, name: &str, prefix: &str) -> Result<S, Error>;
+
     /// Stop manager.
     ///
     /// # Returns
@@ -32,6 +35,36 @@ where
     /// An error if the operation failed.
     ///
     fn stop(self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+pub trait State: Sync + Send + 'static {
+    /// Retrieve the name of the collection.
+    ///
+    /// # Returns
+    ///     
+    /// The name of the collection.
+    ///
+    fn name(&self) -> &str;
+
+    fn get(&self) -> Result<Vec<u8>, Error>;
+
+    fn put(&mut self, data: &[u8]) -> Result<(), Error>;
+
+    fn del(&mut self) -> Result<(), Error>;
+
+    /// Removes all values from the collection.
+    ///
+    /// # Returns
+    ///
+    /// An error if the operation failed.
+    ///
+    fn purge(&mut self) -> Result<(), Error>;
+
+    /// Flush collection.
+    ///
+    fn flush(&self) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -216,33 +249,68 @@ macro_rules! test_store_trait {
             use $crate::error::Error;
 
             #[test]
-            fn test_create() {
+            fn test_create_collection() {
                 let manager = <$type>::default();
                 let store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                assert_eq!(store.name(), "test");
+                assert_eq!(Collection::name(&store), "test");
                 assert!(manager.stop().is_ok())
             }
 
             #[test]
-            fn test_put_get() {
+            fn test_create_state() {
                 let manager = <$type>::default();
-                let mut store: $type2 =
-                    manager.create_collection("test", "test").unwrap();
-                store.put("key", b"value").unwrap();
-                assert_eq!(store.get("key").unwrap(), b"value");
+                let store: $type2 =
+                    manager.create_state("test", "test").unwrap();
+                assert_eq!(State::name(&store), "test");
                 assert!(manager.stop().is_ok())
             }
 
             #[test]
-            fn test_del() {
+            fn test_put_get_collection() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                store.put("key", b"value").unwrap();
-                store.del("key").unwrap();
+                Collection::put(&mut store, "key", b"value").unwrap();
+                assert_eq!(Collection::get(&store, "key").unwrap(), b"value");
+                assert!(manager.stop().is_ok())
+            }
+
+            #[test]
+            fn test_put_get_state() {
+                let manager = <$type>::default();
+                let mut store: $type2 =
+                    manager.create_state("test", "test").unwrap();
+                State::put(&mut store, b"value").unwrap();
+                assert_eq!(State::get(&store).unwrap(), b"value");
+                assert!(manager.stop().is_ok())
+            }
+
+            #[test]
+            fn test_del_collection() {
+                let manager = <$type>::default();
+                let mut store: $type2 =
+                    manager.create_collection("test", "test").unwrap();
+                Collection::put(&mut store, "key", b"value").unwrap();
+                Collection::del(&mut store, "key").unwrap();
                 assert_eq!(
-                    store.get("key"),
+                    Collection::get(&store, "key"),
+                    Err(Error::EntryNotFound(
+                        "Query returned no rows".to_owned()
+                    ))
+                );
+                assert!(manager.stop().is_ok())
+            }
+
+            #[test]
+            fn test_del_state() {
+                let manager = <$type>::default();
+                let mut store: $type2 =
+                    manager.create_state("test", "test").unwrap();
+                State::put(&mut store, b"value").unwrap();
+                State::del(&mut store).unwrap();
+                assert_eq!(
+                    State::get(&store),
                     Err(Error::EntryNotFound(
                         "Query returned no rows".to_owned()
                     ))
@@ -255,9 +323,9 @@ macro_rules! test_store_trait {
                 let manager = <$type>::default();
                 let mut store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                store.put("key1", b"value1").unwrap();
-                store.put("key2", b"value2").unwrap();
-                store.put("key3", b"value3").unwrap();
+                Collection::put(&mut store, "key1", b"value1").unwrap();
+                Collection::put(&mut store, "key2", b"value2").unwrap();
+                Collection::put(&mut store, "key3", b"value3").unwrap();
                 let mut iter = store.iter(false);
                 assert_eq!(
                     iter.next(),
@@ -280,21 +348,21 @@ macro_rules! test_store_trait {
                 let manager = <$type>::default();
                 let mut store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                store.put("test.key1", b"value1").unwrap();
-                store.put("test.key2", b"value2").unwrap();
-                store.put("test.key3", b"value3").unwrap();
+                Collection::put(&mut store, "key1", b"value1").unwrap();
+                Collection::put(&mut store, "key2", b"value2").unwrap();
+                Collection::put(&mut store, "key3", b"value3").unwrap();
                 let mut iter = store.iter(true);
                 assert_eq!(
                     iter.next(),
-                    Some(("test.key3".to_string(), b"value3".to_vec()))
+                    Some(("key3".to_string(), b"value3".to_vec()))
                 );
                 assert_eq!(
                     iter.next(),
-                    Some(("test.key2".to_string(), b"value2".to_vec()))
+                    Some(("key2".to_string(), b"value2".to_vec()))
                 );
                 assert_eq!(
                     iter.next(),
-                    Some(("test.key1".to_string(), b"value1".to_vec()))
+                    Some(("key1".to_string(), b"value1".to_vec()))
                 );
                 assert_eq!(iter.next(), None);
                 assert!(manager.stop().is_ok())
@@ -305,9 +373,9 @@ macro_rules! test_store_trait {
                 let manager = <$type>::default();
                 let mut store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                store.put("key1", b"value1").unwrap();
-                store.put("key2", b"value2").unwrap();
-                store.put("key3", b"value3").unwrap();
+                Collection::put(&mut store, "key1", b"value1").unwrap();
+                Collection::put(&mut store, "key2", b"value2").unwrap();
+                Collection::put(&mut store, "key3", b"value3").unwrap();
                 let last = store.last();
                 assert_eq!(
                     last,
@@ -321,9 +389,9 @@ macro_rules! test_store_trait {
                 let manager = <$type>::default();
                 let mut store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                store.put("key1", b"value1").unwrap();
-                store.put("key2", b"value2").unwrap();
-                store.put("key3", b"value3").unwrap();
+                Collection::put(&mut store, "key1", b"value1").unwrap();
+                Collection::put(&mut store, "key2", b"value2").unwrap();
+                Collection::put(&mut store, "key3", b"value3").unwrap();
                 let result = store.get_by_range(None, 2).unwrap();
                 assert_eq!(
                     result,
@@ -339,31 +407,67 @@ macro_rules! test_store_trait {
             }
 
             #[test]
-            fn test_purge() {
+            fn test_purge_collection() {
                 let manager = <$type>::default();
                 let mut store: $type2 =
                     manager.create_collection("test", "test").unwrap();
-                store.put("key1", b"value1").unwrap();
-                store.put("key2", b"value2").unwrap();
-                store.put("key3", b"value3").unwrap();
-                assert_eq!(store.get("key1"), Ok(b"value1".to_vec()));
-                assert_eq!(store.get("key2"), Ok(b"value2".to_vec()));
-                assert_eq!(store.get("key3"), Ok(b"value3".to_vec()));
-                store.purge().unwrap();
+                Collection::put(&mut store, "key1", b"value1").unwrap();
+                Collection::put(&mut store, "key2", b"value2").unwrap();
+                Collection::put(&mut store, "key3", b"value3").unwrap();
                 assert_eq!(
-                    store.get("key1"),
+                    Collection::get(&store, "key1"),
+                    Ok(b"value1".to_vec())
+                );
+                assert_eq!(
+                    Collection::get(&store, "key2"),
+                    Ok(b"value2".to_vec())
+                );
+                assert_eq!(
+                    Collection::get(&store, "key3"),
+                    Ok(b"value3".to_vec())
+                );
+                Collection::purge(&mut store).unwrap();
+                assert_eq!(
+                    Collection::get(&store, "key1"),
                     Err(Error::EntryNotFound(
                         "Query returned no rows".to_owned()
                     ))
                 );
                 assert_eq!(
-                    store.get("key2"),
+                    Collection::get(&store, "key2"),
                     Err(Error::EntryNotFound(
                         "Query returned no rows".to_owned()
                     ))
                 );
                 assert_eq!(
-                    store.get("key3"),
+                    Collection::get(&store, "key3"),
+                    Err(Error::EntryNotFound(
+                        "Query returned no rows".to_owned()
+                    ))
+                );
+                assert!(manager.stop().is_ok())
+            }
+
+            #[test]
+            fn test_purge_state() {
+                let manager = <$type>::default();
+                let mut store: $type2 =
+                    manager.create_state("test", "test").unwrap();
+                State::put(&mut store, b"value1").unwrap();
+                assert_eq!(State::get(&store), Ok(b"value1".to_vec()));
+                State::purge(&mut store).unwrap();
+                assert_eq!(
+                    State::get(&store),
+                    Err(Error::EntryNotFound(
+                        "Query returned no rows".to_owned()
+                    ))
+                );
+
+                State::put(&mut store, b"value2").unwrap();
+                assert_eq!(State::get(&store), Ok(b"value2".to_vec()));
+                State::purge(&mut store).unwrap();
+                assert_eq!(
+                    State::get(&store),
                     Err(Error::EntryNotFound(
                         "Query returned no rows".to_owned()
                     ))

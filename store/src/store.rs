@@ -12,7 +12,7 @@
 //!
 
 use crate::{
-    database::{Collection, DbManager},
+    database::{Collection, DbManager, State},
     error::Error,
 };
 
@@ -38,11 +38,38 @@ use std::{fmt::Debug, marker::PhantomData};
 /// Nonce size.
 const NONCE_SIZE: usize = 12;
 
+#[derive(Debug, Clone)]
+pub enum PersistenceType {
+    Light,
+    Full,
+}
+
+pub struct LightPersistence;
+pub struct FullPersistence;
+
+pub trait Persistence {
+    fn get_persistence() -> PersistenceType;
+}
+
+impl Persistence for LightPersistence {
+    fn get_persistence() -> PersistenceType {
+        PersistenceType::Light
+    }
+}
+
+impl Persistence for FullPersistence {
+    fn get_persistence() -> PersistenceType {
+        PersistenceType::Full
+    }
+}
+
 /// A trait representing a persistent actor.
 #[async_trait]
 pub trait PersistentActor:
     Actor + Handler<Self> + Debug + Clone + Serialize + DeserializeOwned
 {
+    type Persistence: Persistence;
+
     /// Apply an event to the actor state
     ///
     /// # Arguments
@@ -106,66 +133,16 @@ pub trait PersistentActor:
             return Err(e);
         }
 
-        let response = store
-            .ask(StoreCommand::Persist(event.clone()))
-            .await
-            .map_err(|e| ActorError::Store(e.to_string()))?;
-
-        match response {
-            StoreResponse::Persisted => Ok(()),
-            StoreResponse::Error(error) => {
-                error!("");
-                Err(ActorError::Store(error.to_string()))
-            }
-            _ => Err(ActorError::UnexpectedResponse(
-                ActorPath::from(format!("{}/store", ctx.path().clone())),
-                "StoreResponse::Persisted".to_owned(),
-            )),
-        }
-    }
-
-    /// Light persistence of an event.
-    ///
-    /// # Arguments
-    ///
-    /// - event: The event to persist.
-    /// - store: The store actor.
-    /// - state: The actor.
-    ///
-    /// # Returns
-    ///
-    /// The result of the operation.
-    ///
-    /// # Errors
-    ///
-    /// An error if the operation failed.
-    ///
-    async fn persist_light(
-        &mut self,
-        event: &Self::Event,
-        ctx: &mut ActorContext<Self>,
-    ) -> Result<(), ActorError> {
-        let store = match ctx.get_child::<Store<Self>>("store").await {
-            Some(store) => store,
-            None => {
-                return Err(ActorError::Store(
-                    "Can't get store actor".to_string(),
-                ));
-            }
+        let response = match Self::Persistence::get_persistence() {
+            PersistenceType::Light => store
+                .ask(StoreCommand::PersistLight(event.clone(), self.clone()))
+                .await
+                .map_err(|e| ActorError::Store(e.to_string()))?,
+            PersistenceType::Full => store
+                .ask(StoreCommand::Persist(event.clone()))
+                .await
+                .map_err(|e| ActorError::Store(e.to_string()))?,
         };
-
-        let prev_state = self.clone();
-
-        if let Err(e) = self.apply(event) {
-            error!("");
-            self.update(prev_state);
-            return Err(e);
-        }
-
-        let response = store
-            .ask(StoreCommand::PersistLight(event.clone(), self.clone()))
-            .await
-            .map_err(|e| ActorError::Store(e.to_string()))?;
 
         match response {
             StoreResponse::Persisted => Ok(()),
@@ -213,44 +190,6 @@ pub trait PersistentActor:
         Ok(())
     }
 
-    /// Find a state.
-    ///
-    /// # Arguments
-    ///
-    /// - filter: The filter function.
-    ///
-    /// # Returns
-    ///
-    /// The state if found.
-    ///
-    /// # Errors
-    ///
-    /// An error if the operation failed.
-    ///
-    async fn find(
-        &mut self,
-        filter: for<'a> fn(&'a Self) -> bool,
-        ctx: &mut ActorContext<Self>,
-    ) -> Result<Option<Self>, ActorError> {
-        let store = match ctx.get_child::<Store<Self>>("store").await {
-            Some(store) => store,
-            None => {
-                return Err(ActorError::Store(
-                    "Can't get store actor".to_string(),
-                ));
-            }
-        };
-        let response = store
-            .ask(StoreCommand::Find(filter))
-            .await
-            .map_err(|e| ActorError::Store(e.to_string()))?;
-        if let StoreResponse::State(state) = response {
-            Ok(state)
-        } else {
-            Err(ActorError::Store("Can't find state".to_string()))
-        }
-    }
-
     /// Start the child store and recover the state (if any).
     ///
     /// # Arguments
@@ -268,28 +207,30 @@ pub trait PersistentActor:
     ///
     /// An error if the operation failed.
     ///
-    async fn start_store<C: Collection>(
+    async fn start_store<C: Collection, S: State>(
         &mut self,
         name: &str,
         prefix: Option<String>,
         ctx: &mut ActorContext<Self>,
-        manager: impl DbManager<C>,
+        manager: impl DbManager<C, S>,
         password: Option<[u8; 32]>,
     ) -> Result<(), ActorError> {
         let prefix = match prefix {
             Some(prefix) => prefix,
             None => ctx.path().key(),
         };
+
         let store = Store::<Self>::new(name, &prefix, manager, password)
             .map_err(|e| ActorError::Store(e.to_string()))?;
         let store = ctx.create_child("store", store).await?;
-        let response = store.ask(StoreCommand::Recover).await?;
+        let response = store
+            .ask(StoreCommand::Recover)
+            .await?;
 
         if let StoreResponse::State(Some(state)) = response {
             self.update(state);
         } else {
             debug!("Create first snapshot");
-
             store.tell(StoreCommand::Snapshot(self.clone())).await?;
         }
         Ok(())
@@ -314,7 +255,10 @@ pub trait PersistentActor:
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         if let Some(store) = ctx.get_child::<Store<Self>>("store").await {
-            let _ = store.ask(StoreCommand::Snapshot(self.clone())).await?;
+            if let PersistenceType::Full = Self::Persistence::get_persistence() {
+                let _ = store.ask(StoreCommand::Snapshot(self.clone())).await?;
+            }
+
             store.ask_stop().await
         } else {
             Err(ActorError::Store("Can't get store".to_string()))
@@ -329,16 +273,16 @@ where
 {
     /// The event counter index.
     event_counter: u64,
+    /// The state counter index.
+    state_counter: u64,
     /// The events collection.
     events: Box<dyn Collection>,
     /// The states collection.
-    states: Box<dyn Collection>,
+    states: Box<dyn State>,
     /// Key box that encrypts contents.
     key_box: Option<EncryptedMem>,
-    /// Inmutable actor (query result).
-    inmutable: bool,
     /// The phantom actor.
-    _phantom_actor: PhantomData<P>,
+    _phantom: PhantomData<P>,
 }
 
 impl<P: PersistentActor> Store<P> {
@@ -357,14 +301,15 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// An error if it fails to create the collections.
     ///
-    pub fn new<C>(
+    pub fn new<C, S>(
         name: &str,
         prefix: &str,
-        manager: impl DbManager<C>,
+        manager: impl DbManager<C, S>,
         password: Option<[u8; 32]>,
     ) -> Result<Self, Error>
     where
         C: Collection + 'static,
+        S: State + 'static,
     {
         let key_box = match password {
             Some(key) => {
@@ -379,14 +324,14 @@ impl<P: PersistentActor> Store<P> {
         let events =
             manager.create_collection(&format!("{}_events", name), prefix)?;
         let states =
-            manager.create_collection(&format!("{}_states", name), prefix)?;
+            manager.create_state(&format!("{}_states", name), prefix)?;
         Ok(Self {
             event_counter: 0,
+            state_counter: 0,
             events: Box::new(events),
             states: Box::new(states),
             key_box,
-            inmutable: false,
-            _phantom_actor: PhantomData,
+            _phantom: PhantomData,
         })
     }
 
@@ -405,10 +350,6 @@ impl<P: PersistentActor> Store<P> {
         E: Event + Serialize + DeserializeOwned,
     {
         debug!("Persisting event: {:?}", event);
-        if self.inmutable {
-            error!("Store is inmutable");
-            return Err(Error::Store("Store is inmutable".to_owned()));
-        }
         let bin_config = bincode::config::standard();
 
         let bytes = if let Some(key_box) = &self.key_box {
@@ -428,6 +369,12 @@ impl<P: PersistentActor> Store<P> {
                 Error::Store(format!("Can't encode event: {}", e))
             })?
         };
+
+        if self.event_counter != 0 {
+            self.event_counter += 1;
+        } else if let Ok(last) = self.last_event() && last.is_some(){
+            self.event_counter += 1;
+        }
 
         self.events
             .put(&format!("{:020}", self.event_counter), &bytes)
@@ -451,10 +398,6 @@ impl<P: PersistentActor> Store<P> {
         E: Event + Serialize + DeserializeOwned,
     {
         debug!("Persisting event: {:?}", event);
-        if self.inmutable {
-            error!("Store is inmutable");
-            return Err(Error::Store("Store is inmutable".to_owned()));
-        }
         let bin_config = bincode::config::standard();
 
         let bytes = if let Some(key_box) = &self.key_box {
@@ -474,10 +417,6 @@ impl<P: PersistentActor> Store<P> {
                 Error::Store(format!("Can't encode event: {}", e))
             })?
         };
-
-        if self.event_counter == 0 {
-            self.event_counter = 1;
-        }
 
         self.snapshot(state)?;
         self.events
@@ -522,12 +461,46 @@ impl<P: PersistentActor> Store<P> {
         }
     }
 
+    fn get_state(&self) -> Result<Option<(P, u64)>, Error> {
+        let data = match self.states.get() {
+            Ok(data) => data,
+            Err(e) => {
+                if let Error::EntryNotFound(_) = e {
+                    return Ok(None);
+                } else {
+                    return Err(e);
+                }
+            }
+        };
+
+        let bytes = if let Some(key_box) = &self.key_box {
+            if let Ok(key) = key_box.decrypt() {
+                self.decrypt(key.as_ref(), data.as_slice())?
+            } else {
+                return Err(Error::Store("Can't decrypt key".to_owned()));
+            }
+        } else {
+            data
+        };
+
+        let bin_config = bincode::config::standard();
+
+        let state: (P, u64) =
+            bincode::serde::decode_from_slice(&bytes, bin_config)
+                .map_err(|e| {
+                    error!("Can't decode state: {}", e);
+                    Error::Store(format!("Can't decode state: {}", e))
+                })?
+                .0;
+        Ok(Some(state))
+    }
+
     /// Retrieve events.
     fn events(&mut self, from: u64, to: u64) -> Result<Vec<P::Event>, Error> {
         let mut events = Vec::new();
         let bin_config = bincode::config::standard();
 
-        for i in from..to {
+        for i in from..=to {
             if let Ok(data) = self.events.get(&format!("{:020}", i)) {
                 let event: P::Event = if let Some(key_box) = &self.key_box {
                     if let Ok(key) = key_box.decrypt() {
@@ -574,29 +547,31 @@ impl<P: PersistentActor> Store<P> {
     /// An error if the operation failed.
     ///
     fn snapshot(&mut self, actor: &P) -> Result<(), Error> {
-        if self.inmutable {
-            error!("Store is inmutable");
-            return Err(Error::Store("Store is inmutable".to_owned()));
-        }
-        debug!("Snapshotting state: {:?}", actor);
-        let bin_config = bincode::config::standard();
+            debug!("Snapshotting state: {:?}", actor);
+            let bin_config = bincode::config::standard();
 
-        let data =
-            bincode::serde::encode_to_vec(actor, bin_config).map_err(|e| {
+            self.state_counter = self.event_counter;
+
+            let data = bincode::serde::encode_to_vec(
+                (actor, self.state_counter),
+                bin_config,
+            )
+            .map_err(|e| {
                 error!("Can't encode actor: {}", e);
                 Error::Store(format!("Can't encode actor: {}", e))
             })?;
-        let bytes = if let Some(key_box) = &self.key_box {
-            if let Ok(key) = key_box.decrypt() {
-                self.encrypt(key.as_ref(), data.as_slice())?
+            let bytes = if let Some(key_box) = &self.key_box {
+                if let Ok(key) = key_box.decrypt() {
+                    self.encrypt(key.as_ref(), data.as_slice())?
+                } else {
+                    data
+                }
             } else {
                 data
-            }
-        } else {
-            data
-        };
-        self.states
-            .put(&format!("{:020}", self.event_counter), &bytes)
+            };
+
+            self.states.put(&bytes)
+
     }
 
     /// Recover the state.
@@ -607,40 +582,34 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// An error if the operation failed.
     ///
-    fn recover(&mut self) -> Result<Option<P>, Error> {
-        debug!("Recovering state");
-        if let Some((key, data)) = self.states.last() {
-            let bytes = if let Some(key_box) = &self.key_box {
-                if let Ok(key) = key_box.decrypt() {
-                    self.decrypt(key.as_ref(), data.as_slice())?
-                } else {
-                    return Err(Error::Store("Can't decrypt key".to_owned()));
-                }
-            } else {
-                data
-            };
-            self.event_counter = key.parse().map_err(|e| {
-                Error::Store(format!("Can't parse event key: {}", e))
-            })?;
-            let bin_config = bincode::config::standard();
+    fn recover(
+        &mut self,
+    ) -> Result<Option<P>, Error> {
+        if let Some((mut state, counter)) = self.get_state()? {
+            self.state_counter = counter;
 
-            let mut state: P =
-                bincode::serde::decode_from_slice(&bytes, bin_config)
-                    .map_err(|e| {
-                        error!("Can't decode state: {}", e);
-                        Error::Store(format!("Can't decode state: {}", e))
-                    })?
-                    .0;
-            // Recover events from the last state.
-            let events = self.events(self.event_counter, u64::MAX)?;
-            for event in events {
-                state
-                    .apply(&event)
-                    .map_err(|e| Error::Store(e.to_string()))?;
-                self.event_counter += 1;
+            if let Some((key, ..)) = self.events.last() {
+                self.event_counter = key.parse().map_err(|e| {
+                    Error::Store(format!("Can't parse event key: {}", e))
+                })?;
+
+                if self.event_counter != self.state_counter {
+                    let events =
+                        self.events(self.state_counter + 1, self.event_counter)?;
+                    for event in events {
+                        state
+                            .apply(&event)
+                            .map_err(|e| Error::Store(e.to_string()))?;
+                    }
+
+                    self.snapshot(&state)?;
+                    self.event_counter += 1;
+                }
+
+                Ok(Some(state))
+            } else {
+                Ok(Some(state))
             }
-            debug!("Recovered state: {:?}", state);
-            Ok(Some(state))
         } else {
             Ok(None)
         }
@@ -656,63 +625,6 @@ impl<P: PersistentActor> Store<P> {
         self.events.purge()?;
         self.states.purge()?;
         Ok(())
-    }
-
-    /// Find a state.
-    pub fn find<F>(&mut self, filter: F) -> Result<Option<P>, Error>
-    where
-        F: Fn(&P) -> bool,
-    {
-        // Recover the first state.
-        if let Some((_, state)) = self.states.iter(false).next() {
-            let bytes = if let Some(key_box) = &self.key_box {
-                if let Ok(key) = key_box.decrypt() {
-                    self.decrypt(key.as_ref(), state.as_slice())?
-                } else {
-                    return Err(Error::Store("Can't decrypt key".to_owned()));
-                }
-            } else {
-                state
-            };
-            let bin_config = bincode::config::standard();
-
-            let mut state: P =
-                bincode::serde::decode_from_slice(&bytes, bin_config)
-                    .map_err(|e| {
-                        error!("Can't decode state: {}", e);
-                        Error::Store(format!("Can't decode state: {}", e))
-                    })?
-                    .0;
-            // Apply events to the state until you find the state that responds to the filter.
-            for (_, event) in self.events.iter(false) {
-                if filter(&state) {
-                    self.inmutable = true;
-                    return Ok(Some(state));
-                }
-                let bytes = if let Some(key_box) = &self.key_box {
-                    if let Ok(key) = key_box.decrypt() {
-                        self.decrypt(key.as_ref(), event.as_slice())?
-                    } else {
-                        return Err(Error::Store(
-                            "Can't decrypt key".to_owned(),
-                        ));
-                    }
-                } else {
-                    event
-                };
-                let event: P::Event =
-                    bincode::serde::decode_from_slice(&bytes, bin_config)
-                        .map_err(|e| {
-                            error!("Can't decode event: {}", e);
-                            Error::Store(format!("Can't decode event: {}", e))
-                        })?
-                        .0;
-                state
-                    .apply(&event)
-                    .map_err(|e| Error::Store(e.to_string()))?;
-            }
-        }
-        Ok(None)
     }
 
     /// Encrypt bytes.
@@ -748,7 +660,6 @@ pub enum StoreCommand<P, E> {
     Persist(E),
     PersistLight(E, P),
     Snapshot(P),
-    Find(fn(&P) -> bool),
     LastEvent,
     LastEventNumber,
     LastEventsFrom(u64),
@@ -821,7 +732,6 @@ where
             StoreCommand::Persist(event) => match self.persist(&event) {
                 Ok(_) => {
                     debug!("Persisted event: {:?}", event);
-                    self.event_counter += 1;
                     Ok(StoreResponse::Persisted)
                 }
                 Err(e) => Ok(StoreResponse::Error(e)),
@@ -845,13 +755,15 @@ where
                 Err(e) => Ok(StoreResponse::Error(e)),
             },
             // Recover the state.
-            StoreCommand::Recover => match self.recover() {
-                Ok(state) => {
-                    debug!("Recovered state: {:?}", state);
-                    Ok(StoreResponse::State(state))
+            StoreCommand::Recover => {
+                match self.recover() {
+                    Ok(state) => {
+                        debug!("Recovered state: {:?}", state);
+                        Ok(StoreResponse::State(state))
+                    }
+                    Err(e) => Ok(StoreResponse::Error(e)),
                 }
-                Err(e) => Ok(StoreResponse::Error(e)),
-            },
+            }
             StoreCommand::GetEvents { from, to } => {
                 let events = self.events(from, to).map_err(|e| {
                     ActorError::Store(format!(
@@ -860,13 +772,6 @@ where
                     ))
                 })?;
                 Ok(StoreResponse::Events(events))
-            }
-            // Find a state.
-            StoreCommand::Find(filter) => {
-                let state = self
-                    .find(filter)
-                    .map_err(|e| ActorError::EntryNotFound(e.to_string()))?;
-                Ok(StoreResponse::State(state))
             }
             // Get the last event.
             StoreCommand::LastEvent => match self.last_event() {
@@ -905,6 +810,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+    use tokio_util::sync::CancellationToken;
 
     use super::*;
     use crate::memory::MemoryManager;
@@ -920,20 +827,36 @@ mod tests {
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct TestActorLight {
+        pub data: Vec<i32>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    enum TestMessageLight {
+        SetData(Vec<i32>),
+        GetData,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     enum TestMessage {
         Increment(i32),
         Recover,
         Snapshot,
         GetValue,
-        Find,
     }
 
     impl Message for TestMessage {}
+    impl Message for TestMessageLight {}
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestEvent(i32);
 
     impl Event for TestEvent {}
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct TestEventLight(Vec<i32>);
+
+    impl Event for TestEventLight {}
 
     #[derive(Debug, Clone, PartialEq)]
     enum TestResponse {
@@ -941,7 +864,71 @@ mod tests {
         None,
     }
 
+    #[derive(Debug, Clone, PartialEq)]
+    enum TestResponseLight {
+        Data(Vec<i32>),
+        None,
+    }
+
     impl Response for TestResponse {}
+    impl Response for TestResponseLight {}
+
+    #[async_trait]
+    impl Actor for TestActorLight {
+        type Message = TestMessageLight;
+        type Event = TestEventLight;
+        type Response = TestResponseLight;
+
+        async fn pre_start(
+            &mut self,
+            ctx: &mut ActorContext<Self>,
+        ) -> Result<(), ActorError> {
+            let memory_db: MemoryManager =
+                ctx.system().get_helper("db").await.unwrap();
+
+            let db = Store::<Self>::new(
+                "store",
+                "prefix",
+                memory_db,
+                Some([3u8; 32]),
+            )
+            .unwrap();
+
+            let store = ctx.create_child("store", db).await.unwrap();
+            let response = store
+                .ask(StoreCommand::Recover)
+                .await?;
+
+            if let StoreResponse::State(Some(state)) = response {
+                self.update(state);
+            } else {
+                debug!("Create first snapshot");
+                store
+                    .tell(StoreCommand::Snapshot(self.clone()))
+                    .await
+                    .unwrap();
+            }
+
+            Ok(())
+        }
+
+        async fn pre_stop(
+            &mut self,
+            ctx: &mut ActorContext<Self>,
+        ) -> Result<(), ActorError> {
+            let store: ActorRef<Store<Self>> =
+                ctx.get_child("store").await.unwrap();
+            let response = store
+                .ask(StoreCommand::Snapshot(self.clone()))
+                .await
+                .unwrap();
+            if let StoreResponse::Snapshotted = response {
+                store.ask_stop().await
+            } else {
+                Err(ActorError::Store("Can't snapshot state".to_string()))
+            }
+        }
+    }
 
     #[async_trait]
     impl Actor for TestActor {
@@ -961,7 +948,10 @@ mod tests {
             )
             .unwrap();
             let store = ctx.create_child("store", db).await.unwrap();
-            let response = store.ask(StoreCommand::Recover).await.unwrap();
+            let response = store
+                .ask(StoreCommand::Recover)
+                .await
+                .unwrap();
             debug!("Recover response: {:?}", response);
             if let StoreResponse::State(Some(state)) = response {
                 debug!("Recovering state: {:?}", state);
@@ -989,11 +979,51 @@ mod tests {
     }
 
     #[async_trait]
+    impl PersistentActor for TestActorLight {
+        type Persistence = LightPersistence;
+
+        fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
+            self.data.clone_from(&event.0);
+            Ok(())
+        }
+    }
+
+    #[async_trait]
     impl PersistentActor for TestActor {
+        type Persistence = FullPersistence;
+
         fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
             self.version += 1;
             self.value += event.0;
             Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl Handler<TestActorLight> for TestActorLight {
+        async fn handle_message(
+            &mut self,
+            _sender: ActorPath,
+            msg: TestMessageLight,
+            ctx: &mut ActorContext<TestActorLight>,
+        ) -> Result<TestResponseLight, ActorError> {
+            match msg {
+                TestMessageLight::SetData(data) => {
+                    self.on_event(TestEventLight(data), ctx).await;
+                    Ok(TestResponseLight::None)
+                }
+                TestMessageLight::GetData => {
+                    Ok(TestResponseLight::Data(self.data.clone()))
+                }
+            }
+        }
+
+        async fn on_event(
+            &mut self,
+            event: TestEventLight,
+            ctx: &mut ActorContext<TestActorLight>,
+        ) -> () {
+            self.persist(&event, ctx).await.unwrap();
         }
     }
 
@@ -1014,8 +1044,10 @@ mod tests {
                 TestMessage::Recover => {
                     let store: ActorRef<Store<Self>> =
                         ctx.get_child("store").await.unwrap();
-                    let response =
-                        store.ask(StoreCommand::Recover).await.unwrap();
+                    let response = store
+                        .ask(StoreCommand::Recover)
+                        .await
+                        .unwrap();
                     if let StoreResponse::State(Some(state)) = response {
                         self.update(state.clone());
                         Ok(TestResponse::Value(state.value))
@@ -1033,19 +1065,6 @@ mod tests {
                     Ok(TestResponse::None)
                 }
                 TestMessage::GetValue => Ok(TestResponse::Value(self.value)),
-                TestMessage::Find => {
-                    let store: ActorRef<Store<Self>> =
-                        ctx.get_child("store").await.unwrap();
-                    let response = store
-                        .ask(StoreCommand::Find(|test| test.version == 1))
-                        .await
-                        .unwrap();
-                    if let StoreResponse::State(Some(state)) = response {
-                        Ok(TestResponse::Value(state.value))
-                    } else {
-                        Ok(TestResponse::None)
-                    }
-                }
             }
         }
 
@@ -1059,9 +1078,8 @@ mod tests {
     }
 
     #[tokio::test]
-    //#[traced_test]
     async fn test_store_actor() {
-        let (system, mut runner) = ActorSystem::create(None);
+        let (system, mut runner) = ActorSystem::create(CancellationToken::new());
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;
@@ -1081,6 +1099,10 @@ mod tests {
             value: 0,
         };
         store
+            .tell(StoreCommand::Snapshot(actor.clone()))
+            .await
+            .unwrap();
+        store
             .tell(StoreCommand::Persist(TestEvent(10)))
             .await
             .unwrap();
@@ -1093,19 +1115,21 @@ mod tests {
             .tell(StoreCommand::Persist(TestEvent(10)))
             .await
             .unwrap();
+
         actor.apply(&TestEvent(10)).unwrap();
-        let response = store.ask(StoreCommand::Recover).await.unwrap();
+        let response = store
+            .ask(StoreCommand::Recover)
+            .await
+            .unwrap();
         if let StoreResponse::State(Some(state)) = response {
             assert_eq!(state.value, actor.value);
         }
         let response = store
-            .ask(StoreCommand::Find(|test| test.version == 1))
+            .ask(StoreCommand::Recover)
             .await
             .unwrap();
         if let StoreResponse::State(Some(state)) = response {
-            assert_eq!(state.value, 10);
-        } else {
-            panic!("State not found");
+            assert_eq!(state.value, actor.value);
         }
         let response = store.ask(StoreCommand::LastEvent).await.unwrap();
         if let StoreResponse::LastEvent(Some(event)) = response {
@@ -1115,7 +1139,7 @@ mod tests {
         }
         let response = store.ask(StoreCommand::LastEventNumber).await.unwrap();
         if let StoreResponse::LastEventNumber(number) = response {
-            assert_eq!(number, 2);
+            assert_eq!(number, 1);
         } else {
             panic!("Event number not found");
         }
@@ -1141,9 +1165,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_persistent_light_actor() {
+        let (system, ..) = ActorSystem::create(CancellationToken::new());
+
+        system.add_helper("db", MemoryManager::default()).await;
+
+        let actor = TestActorLight { data: vec![] };
+
+        let actor_ref = system.create_root_actor("test", actor).await.unwrap();
+
+        let result = actor_ref
+            .ask(TestMessageLight::SetData(vec![12, 13, 14, 15]))
+            .await
+            .unwrap();
+
+        assert_eq!(result, TestResponseLight::None);
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        actor_ref.ask_stop().await.unwrap();
+
+        let actor = TestActorLight { data: vec![] };
+
+        let actor_ref = system.create_root_actor("test", actor).await.unwrap();
+
+        let result = actor_ref.ask(TestMessageLight::GetData).await.unwrap();
+
+        let TestResponseLight::Data(data) = result else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(data, vec![12, 13, 14, 15]);
+    }
+
+    #[tokio::test]
     //#[traced_test]
     async fn test_persistent_actor() {
-        let (system, mut runner) = ActorSystem::create(None);
+        let (system, mut runner) = ActorSystem::create(CancellationToken::new());
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;

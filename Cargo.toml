@@ -1,6 +1,6 @@
 [package]
 name = "rush"
-version = "0.7.1"
+version = "0.6.5"
 edition = "2024"
 
 [dependencies]
@@ -10,10 +10,20 @@ rocksdb_db = { path = "databases/rocksdb_db", optional = true}
 sqlite_db = { path = "databases/sqlite_db", optional = true }
 
 [features]
-default = ["rocksdb_db"]
+default = ["sqlite"]
+all = ["sqlite", "rockdb"]
+rockdb = ["rocksdb_db"]
+sqlite = ["sqlite_db"]
 
 [workspace]
 members = [
+    "actor",
+    "store",
+    "databases/rocksdb_db",
+    "databases/sqlite_db",
+]
+default-members = [
+    ".",
     "actor",
     "store",
     "databases/rocksdb_db",
@@ -23,19 +33,19 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.7.1"
+version = "0.6.5"
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.89.0"
 
 [workspace.dependencies]
-async-trait = { version = "0.1.88" }
+async-trait = { version = "0.1.89" }
 bincode = {version = "2.0.1", features = ["serde"] }
 futures =  { version = "0.3.31", features = ["async-await"] }
 serde = { version = "1.0.219", features = ["derive"] }
-tempfile = "3.20.0"
-thiserror = { version = "2.0.12" }
-tokio = { version = "1.45.0" }
-tokio-util = { version = "0.7.15" }
+tempfile = "3.22.0"
+thiserror = { version = "2.0.16" }
+tokio = { version = "1.47.1" }
+tokio-util = { version = "0.7.16" }
 tracing ={ version = "0.1.41" }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tracing-test = "0.2"

@@ -11,14 +11,12 @@
 use crate::{
     ActorPath, Error,
     handler::HandleHelper,
-    runner::{ChildStopSender, InnerAction, InnerSender, StopSender},
+    runner::{InnerAction, InnerSender, StopSender},
     supervision::SupervisionStrategy,
     system::SystemRef,
 };
 
 use tokio::sync::{broadcast::Receiver as EventReceiver, mpsc, oneshot};
-
-use tokio_util::sync::CancellationToken;
 
 use async_trait::async_trait;
 
@@ -44,9 +42,7 @@ pub struct ActorContext<A: Actor + Handler<A>> {
     /// Inner sender.
     inner_sender: InnerSender<A>,
     /// Child action senders.
-    child_senders: Vec<ChildStopSender>,
-    /// Cancellation token.
-    token: CancellationToken,
+    child_senders: Vec<StopSender>,
 }
 
 impl<A> ActorContext<A>
@@ -71,7 +67,6 @@ where
         stop: StopSender,
         path: ActorPath,
         system: SystemRef,
-        token: CancellationToken,
         error_sender: ChildErrorSender,
         inner_sender: InnerSender<A>,
     ) -> Self {
@@ -83,7 +78,6 @@ where
             error_sender,
             inner_sender,
             child_senders: Vec::new(),
-            token,
         }
     }
 
@@ -141,8 +135,8 @@ where
     pub(crate) async fn stop_childs(&mut self) {
         while let Some(sender) = self.child_senders.pop() {
             let (stop_sender, stop_receiver) = oneshot::channel();
-            if sender.send(stop_sender).is_err() {
-                return;
+            if sender.send(Some(stop_sender)).await.is_err() {
+                continue;
             } else {
                 let _ = stop_receiver.await;
             };
@@ -156,7 +150,7 @@ where
     pub async fn stop(&self, sender: Option<oneshot::Sender<()>>) {
         debug!("Stopping actor from handle reference.");
 
-        let _ = self.stop.send(sender);
+        let _ = self.stop.send(sender).await;
     }
 
     /// Emits an event to subscribers.
@@ -266,11 +260,12 @@ where
         C: Actor + Handler<C>,
     {
         let path = self.path.clone() / name;
-        let (actor_ref, sender) = self
+        let (actor_ref, stop_sender) = self
             .system
             .create_actor_path(path, actor, Some(self.error_sender.clone()))
             .await?;
-        self.child_senders.push(sender);
+        
+        self.child_senders.push(stop_sender);
         Ok(actor_ref)
     }
 
@@ -290,45 +285,6 @@ where
     {
         let path = self.path.clone() / name;
         self.system.get_actor(&path).await
-    }
-
-    /// Retrieve or create a new child under this actor if it does not exist yet.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the child actor.
-    /// * `actor_fn` - The function to create the actor if it does not exist.
-    ///
-    /// # Returns
-    ///
-    /// Returns the actor reference of the child actor.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the child actor could not be created.
-    ///
-    pub async fn get_or_create_child<C, F>(
-        &mut self,
-        name: &str,
-        actor_fn: F,
-    ) -> Result<ActorRef<C>, Error>
-    where
-        C: Actor + Handler<C>,
-        F: FnOnce() -> C,
-    {
-        let path = self.path.clone() / name;
-        let (actor_ref, sender) = self
-            .system
-            .get_or_create_actor_path(
-                &path,
-                Some(self.error_sender.clone()),
-                actor_fn,
-            )
-            .await?;
-        if let Some(sender) = sender {
-            self.child_senders.push(sender);
-        }
-        Ok(actor_ref)
     }
 
     /// Returns the error of the actor.
@@ -356,16 +312,6 @@ where
     ///
     pub(crate) fn clean_error(&mut self) {
         self.error = None;
-    }
-
-    /// Sets the cancelation token.
-    ///
-    /// # Arguments
-    ///
-    /// * `token` - The cancelation token.
-    ///
-    pub fn set_token(&mut self, token: CancellationToken) {
-        self.token = token;
     }
 }
 
@@ -714,7 +660,7 @@ where
         debug!("Stopping actor from handle reference.");
         let (response_sender, response_receiver) = oneshot::channel();
 
-        if self.stop_sender.send(Some(response_sender)).is_err() {
+        if self.stop_sender.send(Some(response_sender)).await.is_err() {
             Ok(())
         } else {
             Ok(response_receiver
@@ -726,7 +672,7 @@ where
     pub async fn tell_stop(&self) {
         debug!("Stopping actor from handle reference.");
 
-        let _ = self.stop_sender.send(None);
+        let _ = self.stop_sender.send(None).await;
     }
 
     /// Returns the path of the actor.
@@ -786,6 +732,7 @@ mod test {
 
     use serde::{Deserialize, Serialize};
     use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
 
     #[derive(Debug, Clone)]
     struct TestActor {
@@ -846,7 +793,7 @@ mod test {
     #[tokio::test]
     async fn test_actor() {
         let (event_sender, _event_receiver) = mpsc::channel(100);
-        let system = SystemRef::new(event_sender);
+        let system = SystemRef::new(event_sender, CancellationToken::new());
         let actor = TestActor { counter: 0 };
         let actor_ref = system.create_root_actor("test", actor).await.unwrap();
 

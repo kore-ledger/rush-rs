@@ -9,6 +9,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 // Defines parent actor
@@ -203,7 +204,7 @@ impl Handler<ChildActor> for ChildActor {
 
 #[tokio::test]
 async fn test_actor() {
-    let (system, mut runner) = ActorSystem::create(None);
+    let (system, mut runner) = ActorSystem::create(CancellationToken::new());
     // Init runner.
     tokio::spawn(async move {
         runner.run().await;
@@ -241,7 +242,7 @@ async fn test_actor() {
 
 #[tokio::test]
 async fn test_actor_error() {
-    let (system, mut runner) = ActorSystem::create(None);
+    let (system, mut runner) = ActorSystem::create(CancellationToken::new());
     // Init runner.
     tokio::spawn(async move {
         runner.run().await;
@@ -267,7 +268,7 @@ async fn test_actor_fault() {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 
-    let (system, mut runner) = ActorSystem::create(None);
+    let (system, mut runner) = ActorSystem::create(CancellationToken::new());
     // Init runner.
     tokio::spawn(async move {
         runner.run().await;
