@@ -372,10 +372,8 @@ impl<P: PersistentActor> Store<P> {
 
         if self.event_counter != 0 {
             self.event_counter += 1;
-        } else if let Ok(last) = self.last_event() {
-            if last.is_some() {
-                self.event_counter += 1;
-            }
+        } else if let Ok(last) = self.last_event() && last.is_some(){
+            self.event_counter += 1;
         }
 
         self.events
@@ -812,8 +810,8 @@ where
 
 #[cfg(test)]
 mod tests {
-
     use std::vec;
+    use tokio_util::sync::CancellationToken;
 
     use super::*;
     use crate::memory::MemoryManager;
@@ -1081,7 +1079,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store_actor() {
-        let (system, mut runner) = ActorSystem::create(None);
+        let (system, mut runner) = ActorSystem::create(CancellationToken::new());
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;
@@ -1168,7 +1166,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_persistent_light_actor() {
-        let (system, ..) = ActorSystem::create(None);
+        let (system, ..) = ActorSystem::create(CancellationToken::new());
 
         system.add_helper("db", MemoryManager::default()).await;
 
@@ -1203,7 +1201,7 @@ mod tests {
     #[tokio::test]
     //#[traced_test]
     async fn test_persistent_actor() {
-        let (system, mut runner) = ActorSystem::create(None);
+        let (system, mut runner) = ActorSystem::create(CancellationToken::new());
         // Init runner.
         tokio::spawn(async move {
             runner.run().await;

@@ -10,7 +10,7 @@
 use crate::{
     Actor, ActorPath, ActorRef, Error, Event, Handler,
     actor::ChildErrorSender,
-    runner::{ActorRunner, ChildStopSender},
+    runner::{ActorRunner, StopSender},
     sink::Sink,
 };
 
@@ -32,18 +32,10 @@ impl ActorSystem {
     /// # Returns
     ///
     /// Returns a tuple with the system reference and the system runner.
-    pub fn create(
-        token: Option<CancellationToken>,
-    ) -> (SystemRef, SystemRunner) {
-        let token = if let Some(token) = token {
-            token
-        } else {
-            CancellationToken::new()
-        };
-
-        let (event_sender, event_receiver) = mpsc::channel(10000);
-        let system = SystemRef::new(event_sender);
-        let runner = SystemRunner::new(token, event_receiver);
+    pub fn create(token: CancellationToken) -> (SystemRef, SystemRunner) {
+        let (event_sender, event_receiver) = mpsc::channel(100);
+        let system = SystemRef::new(event_sender, token);
+        let runner = SystemRunner::new(event_receiver);
         (system, runner)
     }
 }
@@ -68,20 +60,42 @@ pub struct SystemRef {
     helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
 
     /// The root actor sender.
-    senders: Arc<RwLock<Vec<ChildStopSender>>>,
+    root_senders: Arc<RwLock<Vec<StopSender>>>,
 
-    /// The event sender.
-    event_sender: mpsc::Sender<SystemEvent>,
+    token: CancellationToken
 }
 
 impl SystemRef {
     /// Create system reference.
-    pub fn new(event_sender: mpsc::Sender<SystemEvent>) -> Self {
+    pub fn new(
+        event_sender: mpsc::Sender<SystemEvent>,
+        token: CancellationToken,
+    ) -> Self {
+        let root_senders = Arc::new(RwLock::new(Vec::<StopSender>::new()));
+        let root_sender_clone = root_senders.clone();
+        let token_clone = token.clone();
+
+        tokio::spawn(async move {
+            token_clone.cancelled().await;
+            debug!("Stopping actor system...");
+            let mut root_senders = root_sender_clone.write().await;
+            while let Some(sender) = root_senders.pop() {
+                let (stop_sender, stop_receiver) = oneshot::channel();
+                if sender.send(Some(stop_sender)).await.is_err() {
+                    return;
+                } else {
+                    let _ = stop_receiver.await;
+                };
+            }
+
+            let _ = event_sender.send(SystemEvent::StopSystem).await;
+        });
+
         SystemRef {
             actors: Arc::new(RwLock::new(HashMap::new())),
             helpers: Arc::new(RwLock::new(HashMap::new())),
-            senders: Arc::new(RwLock::new(Vec::new())),
-            event_sender,
+            token,
+            root_senders,
         }
     }
 
@@ -112,8 +126,8 @@ impl SystemRef {
         &self,
         path: ActorPath,
         actor: A,
-        error_helper: Option<ChildErrorSender>,
-    ) -> Result<(ActorRef<A>, ChildStopSender), Error>
+        parent_error_sender: Option<ChildErrorSender>,
+    ) -> Result<(ActorRef<A>, StopSender), Error>
     where
         A: Actor + Handler<A>,
     {
@@ -127,8 +141,8 @@ impl SystemRef {
         }
         // Create the actor runner and init it.
         let system = self.clone();
-        let (mut runner, actor_ref, child_sender, stop_sender) =
-            ActorRunner::create(path.clone(), actor, error_helper);
+        let (mut runner, actor_ref, stop_sender) =
+            ActorRunner::create(path.clone(), actor, parent_error_sender);
 
         // Store the actor reference.
         let any = Box::new(actor_ref.clone());
@@ -138,12 +152,13 @@ impl SystemRef {
         }
         let (sender, receiver) = oneshot::channel::<bool>();
 
+        let stop_sender_clone = stop_sender.clone();
         tokio::spawn(async move {
-            runner.init(system, stop_sender, Some(sender)).await;
+            runner.init(system, stop_sender_clone, Some(sender)).await;
         });
 
         if receiver.await.map_err(|e| Error::Start(e.to_string()))? {
-            Ok((actor_ref, child_sender))
+            Ok((actor_ref, stop_sender))
         } else {
             Err(Error::Start(format!("Runner can not init {}", path)))
         }
@@ -176,69 +191,10 @@ impl SystemRef {
         A: Actor + Handler<A>,
     {
         let path = ActorPath::from("/user") / name;
-        let (actor_ref, sender) =
+        let (actor_ref, stop_sender, ..) =
             self.create_actor_path::<A>(path, actor, None).await?;
-        let mut senders = self.senders.write().await;
-        senders.push(sender);
-        Ok(actor_ref)
-    }
-
-    /// Retrieve or create a new actor on this actor system if it does not exist yet.
-    pub(crate) async fn get_or_create_actor_path<A, F>(
-        &self,
-        path: &ActorPath,
-        error_helper: Option<ChildErrorSender>,
-        actor_fn: F,
-    ) -> Result<(ActorRef<A>, Option<ChildStopSender>), Error>
-    where
-        A: Actor + Handler<A>,
-        F: FnOnce() -> A,
-    {
-        let actors = self.actors.read().await;
-        match self.get_actor(path).await {
-            Some(actor) => Ok((actor, None)),
-            None => {
-                drop(actors);
-                let (actor_ref, sender) = self
-                    .create_actor_path(path.clone(), actor_fn(), error_helper)
-                    .await?;
-                Ok((actor_ref, Some(sender)))
-            }
-        }
-    }
-
-    /// Retrieve or create a new actor on this actor system if it does not exist yet.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the actor to retrieve or create.
-    /// * `actor_fn` - The function to create the actor if it does not exist.   
-    ///
-    /// # Returns
-    ///
-    /// Returns the actor reference.
-    ///
-    /// # Error
-    ///
-    /// Returns an error if the actor cannot be created.
-    ///
-    pub async fn get_or_create_actor<A, F>(
-        &self,
-        name: &str,
-        actor_fn: F,
-    ) -> Result<ActorRef<A>, Error>
-    where
-        A: Actor + Handler<A>,
-        F: FnOnce() -> A,
-    {
-        let path = ActorPath::from("/user") / name;
-        let (actor_ref, sender) = self
-            .get_or_create_actor_path::<A, F>(&path, None, actor_fn)
-            .await?;
-        if let Some(sender) = sender {
-            let mut senders = self.senders.write().await;
-            senders.push(sender);
-        }
+        let mut senders = self.root_senders.write().await;
+        senders.push(stop_sender);
         Ok(actor_ref)
     }
 
@@ -249,16 +205,13 @@ impl SystemRef {
     ///
     /// * `path` - The path of the actor to remove.
     ///
-    pub async fn remove_actor(&self, path: &ActorPath) {
+    pub(crate) async fn remove_actor(&self, path: &ActorPath) {
         let mut actors = self.actors.write().await;
         actors.remove(path);
     }
 
-    /// Send a system event.
-    pub async fn send_event(&self, event: SystemEvent) {
-        if let Err(error) = self.event_sender.send(event).await {
-            error!("Failed to send event! {}", error.to_string());
-        }
+    pub fn stop_system(&self) {
+        self.token.cancel();
     }
 
     /// Get the actor's children.
@@ -309,41 +262,25 @@ impl SystemRef {
 
 /// System runner.
 pub struct SystemRunner {
-    /// The cancellation token for the actor system.
-    token: CancellationToken,
-
     /// The event receiver.
     event_receiver: mpsc::Receiver<SystemEvent>,
 }
 
 impl SystemRunner {
     /// Create a new system runner.
-    pub(crate) fn new(
-        token: CancellationToken,
-        event_receiver: mpsc::Receiver<SystemEvent>,
-    ) -> Self {
-        Self {
-            token,
-            event_receiver,
-        }
+    pub(crate) fn new(event_receiver: mpsc::Receiver<SystemEvent>) -> Self {
+        Self { event_receiver }
     }
 
     /// Run the actor system.
     pub async fn run(&mut self) {
         debug!("Running actor system...");
-        loop {
             tokio::select! {
                 Some(event) = self.event_receiver.recv() => {
                     match event {
                         SystemEvent::StopSystem => {
-                            debug!("Stopping actor system...");
-                            self.token.cancel();
-                        }
+                            debug!("Actor system stopped.");
                     }
-                }
-                _ = self.token.cancelled() => {
-                    debug!("Actor system stopped.");
-                    break;
                 }
             }
         }
@@ -360,22 +297,24 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_stop_actor_system() {
-        let (system, mut runner) = ActorSystem::create(None);
+        let token = CancellationToken::new();
+        let (_system, mut runner) = ActorSystem::create(token.clone());
 
         tokio::spawn(async move {
             runner.run().await;
         });
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         assert!(logs_contain("Running actor system..."));
-        system.send_event(SystemEvent::StopSystem).await;
+        token.cancel();
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
         assert!(logs_contain("Stopping actor system..."));
         assert!(logs_contain("Actor system stopped."));
     }
 
     #[tokio::test]
     async fn test_helpers() {
-        let (system, _) = ActorSystem::create(None);
+        let (system, _) = ActorSystem::create(CancellationToken::new());
         let helper = TestHelper { value: 42 };
         system.add_helper("test", helper).await;
         let helper: Option<TestHelper> = system.get_helper("test").await;

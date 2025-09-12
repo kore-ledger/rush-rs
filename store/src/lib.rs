@@ -8,7 +8,7 @@
 
 pub mod database;
 pub mod error;
-mod memory;
+pub mod memory;
 pub mod store;
 
 pub use error::Error;

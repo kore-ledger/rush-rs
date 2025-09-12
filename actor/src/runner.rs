@@ -24,20 +24,14 @@ use tokio::{
         mpsc, oneshot,
     },
 };
-use tokio_util::sync::CancellationToken;
-
 use tracing::{debug, error};
 
 /// Inner sender and receiver types.
 pub type InnerSender<A> = mpsc::UnboundedSender<InnerAction<A>>;
 pub type InnerReceiver<A> = mpsc::UnboundedReceiver<InnerAction<A>>;
 
-/// Child sender and receiver for child actions.
-pub type ChildStopSender = mpsc::UnboundedSender<oneshot::Sender<()>>;
-pub type ChildStopReceiver = mpsc::UnboundedReceiver<oneshot::Sender<()>>;
-
-pub type StopReceiver = mpsc::UnboundedReceiver<Option<oneshot::Sender<()>>>;
-pub type StopSender = mpsc::UnboundedSender<Option<oneshot::Sender<()>>>;
+pub type StopReceiver = mpsc::Receiver<Option<oneshot::Sender<()>>>;
+pub type StopSender = mpsc::Sender<Option<oneshot::Sender<()>>>;
 
 /// Actor runner.
 pub(crate) struct ActorRunner<A: Actor> {
@@ -45,16 +39,21 @@ pub(crate) struct ActorRunner<A: Actor> {
     actor: A,
     lifecycle: ActorLifecycle,
     receiver: MailboxReceiver<A>,
-    stop_receiver: StopReceiver,
+    
     event_sender: EventSender<A::Event>,
+
+    // si es root me para alguien y sino mi padre.
+    stop_receiver: StopReceiver,
+    // Sender para darselo a mi hijo, por eso lo guardo.
     error_sender: ChildErrorSender,
+    // Sender para enviarle mensaje a mi padre en caso de que tenga padre.
     parent_sender: Option<ChildErrorSender>,
+    // Escucho los errores de mis hijos.
     error_receiver: ChildErrorReceiver,
+
     inner_sender: InnerSender<A>,
     inner_receiver: InnerReceiver<A>,
-    child_stop_receiver: ChildStopReceiver,
     stop_signal: bool,
-    token: CancellationToken,
 }
 
 impl<A> ActorRunner<A>
@@ -66,15 +65,13 @@ where
         path: ActorPath,
         actor: A,
         parent_sender: Option<ChildErrorSender>,
-    ) -> (Self, ActorRef<A>, ChildStopSender, StopSender) {
+    ) -> (Self, ActorRef<A>, StopSender) {
         debug!("Creating new actor runner.");
         let (sender, receiver) = mailbox();
-        let (stop_sender, stop_receiver) = mpsc::unbounded_channel();
+        let (stop_sender, stop_receiver) = mpsc::channel(100);
         let (error_sender, error_receiver) = mpsc::unbounded_channel();
         let (event_sender, event_receiver) = broadcast::channel(10000);
         let (inner_sender, inner_receiver) = mpsc::unbounded_channel();
-        let (child_stop_sender, child_stop_receiver) =
-            mpsc::unbounded_channel();
         let helper = HandleHelper::new(sender);
 
         //let error_helper = ErrorHelper::new(error_sender);
@@ -84,8 +81,7 @@ where
             stop_sender.clone(),
             event_receiver,
         );
-        let token = CancellationToken::new();
-        let runner = ActorRunner {
+        let runner: ActorRunner<A> = ActorRunner {
             path,
             actor,
             lifecycle: ActorLifecycle::Created,
@@ -97,11 +93,9 @@ where
             error_receiver,
             inner_sender,
             inner_receiver,
-            child_stop_receiver,
-            token,
             stop_signal: false,
         };
-        (runner, actor_ref, child_stop_sender, stop_sender)
+        (runner, actor_ref, stop_sender)
     }
 
     /// Init the actor runner.
@@ -119,7 +113,6 @@ where
             stop_sender,
             self.path.clone(),
             system.clone(),
-            self.token.clone(),
             self.error_sender.clone(),
             self.inner_sender.clone(),
         );
@@ -222,11 +215,6 @@ where
 
         loop {
             select! {
-                _ = self.token.cancelled(), if !self.stop_signal => {
-                    debug!("Actor {} is stopped.", &self.path);
-                    ctx.stop(None).await;
-                    self.stop_signal = true;
-                }
                 stop = self.stop_receiver.recv() => {
                     debug!("Stopping actor.");
                     if self.actor.pre_stop(ctx).await.is_err() {
@@ -240,8 +228,6 @@ where
                     if let Some(Some(stop)) = stop {
                         let _ = stop.send(());
                     }
-                    self.token.cancel();
-
 
                     if let ActorLifecycle::Started =  self.lifecycle {
                         self.lifecycle = ActorLifecycle::Stopped;
@@ -273,11 +259,6 @@ where
                         ctx.stop(None).await;
                         self.stop_signal = true;
                     }
-                }
-                // Handle child action from `child_receiver`.
-                stop_receiver = self.child_stop_receiver.recv(), if !self.stop_signal => {
-                    ctx.stop(stop_receiver).await;
-                    self.stop_signal = true;
                 }
                 // Gets message handler from mailbox receiver and push it to the messages queue.
                 msg = self.receiver.recv(), if !self.stop_signal => {
@@ -390,9 +371,6 @@ where
                         Ok(_) => {
                             self.lifecycle = ActorLifecycle::Started;
                             *retries = 0;
-                            let token = CancellationToken::new();
-                            ctx.set_token(token.clone());
-                            self.token = token;
                         }
                         Err(err) => {
                             ctx.set_error(err);
@@ -431,6 +409,7 @@ mod tests {
     use async_trait::async_trait;
     use serde::{Deserialize, Serialize};
 
+    use tokio_util::sync::CancellationToken;
     use tracing_test::traced_test;
 
     use std::time::Duration;
@@ -522,10 +501,10 @@ mod tests {
     async fn test_actor_root_failed() {
         let (event_sender, _) = mpsc::channel(100);
 
-        let system = SystemRef::new(event_sender);
+        let system = SystemRef::new(event_sender, CancellationToken::new());
 
         let actor = TestActor { failed: false };
-        let (mut runner, actor_ref, _sender, stop_sender) =
+        let (mut runner, actor_ref, stop_sender) =
             ActorRunner::create(ActorPath::from("/user/test"), actor, None);
         let inner_system = system.clone();
 
@@ -553,7 +532,7 @@ mod tests {
 
         let actor = TestActor { failed: true };
 
-        let (mut runner, actor_ref, _, stop_sender) =
+        let (mut runner, actor_ref, stop_sender) =
             ActorRunner::create(ActorPath::from("/user/test"), actor, None);
         let inner_system = system.clone();
 

@@ -14,13 +14,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+type MemoryData = Arc<
+    RwLock<HashMap<(String, String), Arc<RwLock<BTreeMap<String, Vec<u8>>>>>>,
+>;
+
 #[derive(Default, Clone)]
 pub struct MemoryManager {
-    data: Arc<
-        RwLock<
-            HashMap<(String, String), Arc<RwLock<BTreeMap<String, Vec<u8>>>>>,
-        >,
-    >,
+    data: MemoryData,
 }
 
 impl DbManager<MemoryStore, MemoryStore> for MemoryManager {
