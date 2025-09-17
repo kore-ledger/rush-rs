@@ -11,8 +11,8 @@ sqlite_db = { path = "databases/sqlite_db", optional = true }
 
 [features]
 default = ["sqlite"]
-all = ["sqlite", "rockdb"]
-rockdb = ["rocksdb_db"]
+all = ["sqlite", "rocksdb"]
+rocksdb = ["rocksdb_db"]
 sqlite = ["sqlite_db"]
 
 [workspace]

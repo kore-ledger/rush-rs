@@ -7,18 +7,23 @@
 //! It is designed to be modular and extensible, allowing developers to build custom actors and message types.
 
 pub use actor::{
-    Actor,  ActorRef, ActorSystem, ActorContext, ActorPath, Handler,
-    Message, Event, Response, Error as ActorError,
+    Actor, ActorContext, ActorPath, ActorRef, ActorSystem, ChildAction,
+    CustomIntervalStrategy, Error as ActorError, Event, 
+    FixedIntervalStrategy, Handler, Message, NoIntervalStrategy,
+    Response, RetryActor, RetryMessage, RetryStrategy, Sink,
+    Strategy, Subscriber, SupervisionStrategy, SystemEvent, SystemRef,
+    SystemRunner,
 };
 
+#[cfg(any(feature = "rocksdb", feature = "sqlite"))]
 pub use store::{
     Error as StoreError,
-    store::PersistentActor,
-    database::{Collection, DbManager},
+    database::{Collection, DbManager, State},
+    store::{PersistentActor, FullPersistence, LightPersistence, Store, StoreCommand, StoreResponse}, 
 };
 
-#[cfg(feature = "rocksdb_db")]
+#[cfg(feature = "rocksdb")]
 pub use rocksdb_db::{RocksDbManager, RocksDbStore};
 
-#[cfg(feature = "sqlite_db")]
+#[cfg(feature = "sqlite")]
 pub use sqlite_db::{SqliteCollection, SqliteManager};
