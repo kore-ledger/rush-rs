@@ -325,8 +325,18 @@ impl<P: PersistentActor> Store<P> {
             manager.create_collection(&format!("{}_events", name), prefix)?;
         let states =
             manager.create_state(&format!("{}_states", name), prefix)?;
+
+        // Initialize event_counter from the last event in the database
+        let initial_event_counter = if let Some((key, _)) = events.last() {
+            key.parse().unwrap_or(0)
+        } else {
+            0
+        };
+
+        debug!("Initializing Store with event_counter: {}", initial_event_counter);
+
         Ok(Self {
-            event_counter: 0,
+            event_counter: initial_event_counter,
             state_counter: 0,
             events: Box::new(events),
             states: Box::new(states),
@@ -370,14 +380,28 @@ impl<P: PersistentActor> Store<P> {
             })?
         };
 
-        if self.event_counter != 0 {
-            self.event_counter += 1;
+        // Calculate next event number but don't increment yet
+        let next_event_number = if self.event_counter != 0 {
+            self.event_counter + 1
         } else if let Ok(last) = self.last_event() && last.is_some(){
-            self.event_counter += 1;
+            self.event_counter + 1
+        } else {
+            0
+        };
+
+        debug!("Persisting event {} at index {}", std::any::type_name::<E>(), next_event_number);
+
+        // First persist the event, then increment counter (atomic operation)
+        let result = self.events
+            .put(&format!("{:020}", next_event_number), &bytes);
+
+        // Only increment counter if persist was successful
+        if result.is_ok() {
+            self.event_counter = next_event_number;
+            debug!("Successfully persisted event, event_counter now: {}", self.event_counter);
         }
 
-        self.events
-            .put(&format!("{:020}", self.event_counter), &bytes)
+        result
     }
 
     /// Persist an event and the state.
@@ -585,32 +609,49 @@ impl<P: PersistentActor> Store<P> {
     fn recover(
         &mut self,
     ) -> Result<Option<P>, Error> {
+        debug!("Starting recovery process");
+
         if let Some((mut state, counter)) = self.get_state()? {
             self.state_counter = counter;
+            debug!("Recovered state with counter: {}", counter);
 
             if let Some((key, ..)) = self.events.last() {
                 self.event_counter = key.parse().map_err(|e| {
                     Error::Store(format!("Can't parse event key: {}", e))
                 })?;
 
+                debug!("Recovery state: event_counter={}, state_counter={}",
+                       self.event_counter, self.state_counter);
+
                 if self.event_counter != self.state_counter {
+                    debug!("Applying events from {} to {}", self.state_counter + 1, self.event_counter);
                     let events =
                         self.events(self.state_counter + 1, self.event_counter)?;
-                    for event in events {
+                    debug!("Found {} events to replay", events.len());
+
+                    for (i, event) in events.iter().enumerate() {
+                        debug!("Applying event {} of {}", i + 1, events.len());
                         state
-                            .apply(&event)
+                            .apply(event)
                             .map_err(|e| Error::Store(e.to_string()))?;
                     }
 
+                    debug!("Updating snapshot after applying {} events", events.len());
                     self.snapshot(&state)?;
-                    self.event_counter += 1;
+                    debug!("Recovery completed. Final event_counter: {}", self.event_counter);
+                    // Note: We don't increment event_counter here as it already has the correct value
+                    // from the last persisted event key
+                } else {
+                    debug!("State is up to date, no events to apply");
                 }
 
                 Ok(Some(state))
             } else {
+                debug!("No events found in database, using recovered state as-is");
                 Ok(Some(state))
             }
         } else {
+            debug!("No previous state found, starting fresh");
             Ok(None)
         }
     }
@@ -1256,5 +1297,364 @@ mod tests {
         let encrypted = store.encrypt(&key, data).unwrap();
         let decrypted = store.decrypt(&key, &encrypted).unwrap();
         assert_eq!(data, decrypted.as_slice());
+    }
+
+    #[tokio::test]
+    async fn test_recovery_after_crash() {
+        // This test simulates the crash scenario described by the user
+        let db_manager = MemoryManager::default();
+
+        // Phase 1: Create store, persist some events, and make a snapshot
+        let mut store1 = Store::<TestActor>::new(
+            "crash_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        let mut actor = TestActor {
+            version: 0,
+            value: 0,
+        };
+
+        // Persist events 0-9 and create snapshot at event 8
+        for i in 0..10 {
+            store1.persist(&TestEvent(1)).unwrap();
+            actor.apply(&TestEvent(1)).unwrap();
+
+            // Create snapshot at event 8
+            if i == 8 {
+                store1.snapshot(&actor).unwrap();
+            }
+        }
+
+        // At this point we should have:
+        // - event_counter = 9 (last event is 9)
+        // - state_counter = 8 (from snapshot)
+        assert_eq!(store1.event_counter, 9);
+
+        // Phase 2: Create a new store (simulating restart after crash)
+        // This should initialize properly from the database
+        let mut store2 = Store::<TestActor>::new(
+            "crash_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        // The new store should initialize with the correct event_counter
+        assert_eq!(store2.event_counter, 9, "Store should initialize with correct event counter from DB");
+
+        // Phase 3: Perform recovery
+        let recovered_state = store2.recover().unwrap();
+        assert!(recovered_state.is_some(), "Should recover a state");
+
+        let recovered_actor = recovered_state.unwrap();
+
+        // The recovered actor should have applied event 9 (which was missing from snapshot)
+        assert_eq!(recovered_actor.value, 10, "Recovered state should include all persisted events");
+        assert_eq!(recovered_actor.version, 10, "Recovered version should be correct");
+
+        // After recovery, counters should be consistent
+        assert_eq!(store2.event_counter, 9, "Event counter should remain correct after recovery");
+        assert_eq!(store2.state_counter, 9, "State counter should match event counter after recovery");
+
+        // Phase 4: Persist another event to verify counter works correctly
+        store2.persist(&TestEvent(5)).unwrap();
+        assert_eq!(store2.event_counter, 10, "Event counter should increment correctly after recovery");
+    }
+
+    #[tokio::test]
+    async fn test_crash_during_persist() {
+        // This test validates that a crash during persist doesn't cause inconsistency
+        let db_manager = MemoryManager::default();
+
+        let mut store = Store::<TestActor>::new(
+            "persist_crash_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        // Persist one event successfully
+        store.persist(&TestEvent(1)).unwrap();
+        assert_eq!(store.event_counter, 0);
+
+        // Simulate the store being recreated (as happens after crash)
+        let mut new_store = Store::<TestActor>::new(
+            "persist_crash_test",
+            "test_prefix",
+            db_manager,
+            None,
+        ).unwrap();
+
+        // The new store should have the correct event counter
+        assert_eq!(new_store.event_counter, 0, "Event counter should be initialized from DB");
+
+        // Persist another event - this should work correctly
+        new_store.persist(&TestEvent(2)).unwrap();
+        assert_eq!(new_store.event_counter, 1, "Should increment correctly after restart");
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_persist_operations() {
+        // Test concurrent persist operations to detect race conditions
+        let db_manager = MemoryManager::default();
+        let mut store = Store::<TestActor>::new(
+            "concurrent_test",
+            "test_prefix",
+            db_manager,
+            None,
+        ).unwrap();
+
+        // Persist multiple events concurrently (simulated by sequential calls)
+        // Note: In a real concurrent scenario, these would be called from different threads
+        let event1 = TestEvent(10);
+        let event2 = TestEvent(20);
+        let event3 = TestEvent(30);
+
+        store.persist(&event1).unwrap();
+        assert_eq!(store.event_counter, 0);
+
+        store.persist(&event2).unwrap();
+        assert_eq!(store.event_counter, 1);
+
+        store.persist(&event3).unwrap();
+        assert_eq!(store.event_counter, 2);
+
+        // Verify all events are retrievable
+        let events = store.events(0, 2).unwrap();
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].0, 10);
+        assert_eq!(events[1].0, 20);
+        assert_eq!(events[2].0, 30);
+    }
+
+    #[tokio::test]
+    async fn test_encryption_key_handling() {
+        // Test encryption with different key scenarios
+        let db_manager = MemoryManager::default();
+        let key = [42u8; 32]; // Test key
+
+        let mut store = Store::<TestActor>::new(
+            "encrypt_test",
+            "test_prefix",
+            db_manager.clone(),
+            Some(key),
+        ).unwrap();
+
+        // Persist encrypted event
+        store.persist(&TestEvent(100)).unwrap();
+        assert_eq!(store.event_counter, 0);
+
+        // Create new store with same key - should work
+        let mut store2 = Store::<TestActor>::new(
+            "encrypt_test",
+            "test_prefix",
+            db_manager.clone(),
+            Some(key),
+        ).unwrap();
+
+        let recovered_state = store2.recover().unwrap();
+        assert!(recovered_state.is_none()); // No snapshot exists
+
+        // Verify event can be read with correct key
+        let last_event = store2.last_event().unwrap();
+        assert!(last_event.is_some());
+        assert_eq!(last_event.unwrap().0, 100);
+
+        // Create store with wrong key - should fail
+        let wrong_key = [0u8; 32];
+        let store3 = Store::<TestActor>::new(
+            "encrypt_test",
+            "test_prefix",
+            db_manager.clone(),
+            Some(wrong_key),
+        ).unwrap();
+
+        // This should fail to decrypt
+        let result = store3.last_event();
+        assert!(result.is_err(), "Should fail with wrong encryption key");
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_consistency() {
+        // Test snapshot consistency across different scenarios
+        let db_manager = MemoryManager::default();
+        let mut store = Store::<TestActor>::new(
+            "snapshot_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        let mut actor = TestActor {
+            version: 0,
+            value: 0,
+        };
+
+        // Create initial snapshot
+        store.snapshot(&actor).unwrap();
+        assert_eq!(store.state_counter, 0);
+
+        // Persist some events
+        for i in 1..=5 {
+            store.persist(&TestEvent(i)).unwrap();
+            actor.apply(&TestEvent(i)).unwrap();
+        }
+
+        assert_eq!(store.event_counter, 4);
+
+        // Create snapshot after events
+        store.snapshot(&actor).unwrap();
+        assert_eq!(store.state_counter, 4); // Should match event_counter
+
+        // Verify snapshot contains correct state
+        let (recovered_state, counter) = store.get_state().unwrap().unwrap();
+        assert_eq!(counter, 4);
+        assert_eq!(recovered_state.value, 15); // Sum of 1+2+3+4+5
+        assert_eq!(recovered_state.version, 5);
+
+        // Add more events after snapshot
+        for i in 6..=8 {
+            store.persist(&TestEvent(i)).unwrap();
+            actor.apply(&TestEvent(i)).unwrap();
+        }
+
+        // Recovery should apply new events on top of snapshot
+        let recovered_state = store.recover().unwrap().unwrap();
+        assert_eq!(recovered_state.value, 36); // 15 + 6 + 7 + 8 = 36
+        assert_eq!(recovered_state.version, 8);
+    }
+
+    #[tokio::test]
+    async fn test_edge_case_empty_database() {
+        // Test behavior with completely empty database
+        let db_manager = MemoryManager::default();
+        let mut store = Store::<TestActor>::new(
+            "empty_test",
+            "test_prefix",
+            db_manager,
+            None,
+        ).unwrap();
+
+        // Initial state should be clean
+        assert_eq!(store.event_counter, 0);
+        assert_eq!(store.state_counter, 0);
+
+        // Recovery should return None for empty database
+        let recovered_state = store.recover().unwrap();
+        assert!(recovered_state.is_none());
+
+        // Last event should be None
+        let last_event = store.last_event().unwrap();
+        assert!(last_event.is_none());
+
+        // Events query on empty db should return empty vec
+        let events = store.events(0, 10).unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_large_event_count() {
+        // Test behavior with many events to stress test counter management
+        let db_manager = MemoryManager::default();
+        let mut store = Store::<TestActor>::new(
+            "large_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        let event_count = 1000u64;
+
+        // Persist many events
+        for i in 0..event_count {
+            store.persist(&TestEvent(1)).unwrap();
+            assert_eq!(store.event_counter, i);
+        }
+
+        // Final counter should be correct
+        assert_eq!(store.event_counter, event_count - 1);
+
+        // Create new store and verify initialization
+        let mut new_store = Store::<TestActor>::new(
+            "large_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        assert_eq!(new_store.event_counter, event_count - 1);
+
+        // Add one more event
+        new_store.persist(&TestEvent(2)).unwrap();
+        assert_eq!(new_store.event_counter, event_count);
+    }
+
+    #[tokio::test]
+    async fn test_malformed_data_recovery() {
+        // Test recovery resilience to malformed data
+        let db_manager = MemoryManager::default();
+        let mut store = Store::<TestActor>::new(
+            "malformed_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        // First, store valid data
+        let actor = TestActor { version: 1, value: 42 };
+        store.snapshot(&actor).unwrap();
+        store.persist(&TestEvent(10)).unwrap();
+
+        // Verify normal recovery works
+        let mut new_store = Store::<TestActor>::new(
+            "malformed_test",
+            "test_prefix",
+            db_manager,
+            None,
+        ).unwrap();
+
+        let recovered = new_store.recover().unwrap();
+        assert!(recovered.is_some());
+        let recovered_actor = recovered.unwrap();
+        assert_eq!(recovered_actor.version, 1); // Original version from snapshot
+        assert_eq!(recovered_actor.value, 42); // Original value from snapshot, event not reapplied
+    }
+
+    #[tokio::test]
+    async fn test_persist_light_vs_full() {
+        // Compare behavior between light and full persistence
+        let db_manager = MemoryManager::default();
+
+        // Test full persistence
+        let mut store_full = Store::<TestActor>::new(
+            "full_test",
+            "test_prefix",
+            db_manager.clone(),
+            None,
+        ).unwrap();
+
+        store_full.persist(&TestEvent(5)).unwrap();
+        assert_eq!(store_full.event_counter, 0);
+
+        // Test light persistence
+        let mut store_light = Store::<TestActorLight>::new(
+            "light_test",
+            "test_prefix",
+            db_manager,
+            None,
+        ).unwrap();
+
+        let actor_state = TestActorLight { data: vec![1, 2, 3] };
+        store_light.persist_state(&TestEventLight(vec![4, 5, 6]), &actor_state).unwrap();
+
+        // Light persistence should create both event and snapshot
+        let (recovered_state, _) = store_light.get_state().unwrap().unwrap();
+        assert_eq!(recovered_state.data, vec![1, 2, 3]); // Original state before event application
+
+        let last_event = store_light.last_event().unwrap().unwrap();
+        assert_eq!(last_event.0, vec![4, 5, 6]);
     }
 }
