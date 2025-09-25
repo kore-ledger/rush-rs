@@ -325,8 +325,18 @@ impl<P: PersistentActor> Store<P> {
             manager.create_collection(&format!("{}_events", name), prefix)?;
         let states =
             manager.create_state(&format!("{}_states", name), prefix)?;
+
+        // Initialize event_counter from the last event in the database
+        let initial_event_counter = if let Some((key, _)) = events.last() {
+            key.parse().unwrap_or(0)
+        } else {
+            0
+        };
+
+        debug!("Initializing Store with event_counter: {}", initial_event_counter);
+
         Ok(Self {
-            event_counter: 0,
+            event_counter: initial_event_counter,
             state_counter: 0,
             events: Box::new(events),
             states: Box::new(states),
@@ -370,14 +380,28 @@ impl<P: PersistentActor> Store<P> {
             })?
         };
 
-        if self.event_counter != 0 {
-            self.event_counter += 1;
+        // Calculate next event number but don't increment yet
+        let next_event_number = if self.event_counter != 0 {
+            self.event_counter + 1
         } else if let Ok(last) = self.last_event() && last.is_some(){
-            self.event_counter += 1;
+            self.event_counter + 1
+        } else {
+            0
+        };
+
+        debug!("Persisting event {} at index {}", std::any::type_name::<E>(), next_event_number);
+
+        // First persist the event, then increment counter (atomic operation)
+        let result = self.events
+            .put(&format!("{:020}", next_event_number), &bytes);
+
+        // Only increment counter if persist was successful
+        if result.is_ok() {
+            self.event_counter = next_event_number;
+            debug!("Successfully persisted event, event_counter now: {}", self.event_counter);
         }
 
-        self.events
-            .put(&format!("{:020}", self.event_counter), &bytes)
+        result
     }
 
     /// Persist an event and the state.
@@ -585,32 +609,49 @@ impl<P: PersistentActor> Store<P> {
     fn recover(
         &mut self,
     ) -> Result<Option<P>, Error> {
+        debug!("Starting recovery process");
+
         if let Some((mut state, counter)) = self.get_state()? {
             self.state_counter = counter;
+            debug!("Recovered state with counter: {}", counter);
 
             if let Some((key, ..)) = self.events.last() {
                 self.event_counter = key.parse().map_err(|e| {
                     Error::Store(format!("Can't parse event key: {}", e))
                 })?;
 
+                debug!("Recovery state: event_counter={}, state_counter={}",
+                       self.event_counter, self.state_counter);
+
                 if self.event_counter != self.state_counter {
+                    debug!("Applying events from {} to {}", self.state_counter + 1, self.event_counter);
                     let events =
                         self.events(self.state_counter + 1, self.event_counter)?;
-                    for event in events {
+                    debug!("Found {} events to replay", events.len());
+
+                    for (i, event) in events.iter().enumerate() {
+                        debug!("Applying event {} of {}", i + 1, events.len());
                         state
-                            .apply(&event)
+                            .apply(event)
                             .map_err(|e| Error::Store(e.to_string()))?;
                     }
 
+                    debug!("Updating snapshot after applying {} events", events.len());
                     self.snapshot(&state)?;
-                    self.event_counter += 1;
+                    debug!("Recovery completed. Final event_counter: {}", self.event_counter);
+                    // Note: We don't increment event_counter here as it already has the correct value
+                    // from the last persisted event key
+                } else {
+                    debug!("State is up to date, no events to apply");
                 }
 
                 Ok(Some(state))
             } else {
+                debug!("No events found in database, using recovered state as-is");
                 Ok(Some(state))
             }
         } else {
+            debug!("No previous state found, starting fresh");
             Ok(None)
         }
     }
