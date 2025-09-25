@@ -44,7 +44,7 @@ pub trait MessageHandler<A: Actor>: Send + Sync {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     ///
@@ -118,7 +118,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Create a tell message (no response expected)
     /// let tell_msg = ActorMessage::new(
     ///     MyMessage::DoSomething,

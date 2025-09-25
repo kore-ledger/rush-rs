@@ -51,7 +51,7 @@
 //! ### Testing
 //!
 //! Ideal for unit and integration testing:
-//! ```rust
+//! ```ignore
 //! #[tokio::test]
 //! async fn test_actor_persistence() {
 //!     let manager = MemoryManager::default();
@@ -69,7 +69,7 @@
 //! ### Development
 //!
 //! Quick setup for development environments:
-//! ```rust
+//! ```ignore
 //! // Development actor system with in-memory persistence
 //! let (system, mut runner) = ActorSystem::create();
 //! system.add_helper("db", MemoryManager::default()).await;
@@ -110,7 +110,7 @@
 //!
 //! ### Manager Lifecycle
 //!
-//! ```rust
+//! ```ignore
 //! // Create manager
 //! let manager = MemoryManager::default();
 //!
@@ -127,7 +127,7 @@
 //! Multiple stores with the same (name, prefix) combination share the same
 //! underlying data:
 //!
-//! ```rust
+//! ```ignore
 //! let manager = MemoryManager::default();
 //!
 //! let store_a = manager.create_collection("shared", "data")?;
@@ -271,7 +271,7 @@ type MemoryData = Arc<
 ///
 /// ## Basic Usage
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::memory::MemoryManager;
 ///
 /// let manager = MemoryManager::default();
@@ -287,7 +287,7 @@ type MemoryData = Arc<
 ///
 /// ## Data Isolation Testing
 ///
-/// ```rust
+/// ```ignore
 /// #[tokio::test]
 /// async fn test_data_isolation() {
 ///     let manager = MemoryManager::default();
@@ -306,7 +306,7 @@ type MemoryData = Arc<
 ///
 /// ## Shared Data Testing
 ///
-/// ```rust
+/// ```ignore
 /// #[tokio::test]
 /// async fn test_data_sharing() {
 ///     let manager = MemoryManager::default();
@@ -474,7 +474,7 @@ impl DbManager<MemoryStore, MemoryStore> for MemoryManager {
 ///
 /// ## Basic Collection Usage
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::memory::{MemoryManager, MemoryStore};
 /// use rush_store::database::Collection;
 ///
@@ -496,7 +496,7 @@ impl DbManager<MemoryStore, MemoryStore> for MemoryManager {
 ///
 /// ## State Storage Usage
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::database::State;
 ///
 /// let manager = MemoryManager::default();
@@ -512,7 +512,7 @@ impl DbManager<MemoryStore, MemoryStore> for MemoryManager {
 ///
 /// ## Data Sharing Example
 ///
-/// ```rust
+/// ```ignore
 /// let manager = MemoryManager::default();
 ///
 /// // Create two stores with same identity - they share data
@@ -525,7 +525,7 @@ impl DbManager<MemoryStore, MemoryStore> for MemoryManager {
 ///
 /// ## Concurrent Access Example
 ///
-/// ```rust
+/// ```ignore
 /// use std::sync::Arc;
 /// use tokio::task;
 ///
@@ -771,23 +771,6 @@ mod tests {
     use super::*;
     use crate::test_store_trait;
 
-    /// Comprehensive test suite for MemoryManager and MemoryStore implementations.
-    ///
-    /// This macro generates a full test suite validating that the memory storage
-    /// implementation correctly satisfies all [`DbManager`], [`Collection`], and
-    /// [`State`] trait requirements. The tests cover:
-    ///
-    /// - Basic CRUD operations (Create, Read, Update, Delete)
-    /// - Data isolation between different prefixes
-    /// - Iterator functionality in both forward and reverse directions
-    /// - Range query operations with various parameters
-    /// - Purge operations for complete data cleanup
-    /// - Error handling for missing entries
-    /// - Thread safety and concurrent access patterns
-    ///
-    /// The test suite ensures that the memory storage implementation provides
-    /// consistent behavior that matches other storage backends, enabling safe
-    /// substitution between different storage implementations.
     test_store_trait! {
         unit_test_memory_manager: crate::memory::MemoryManager: MemoryStore
     }

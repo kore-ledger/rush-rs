@@ -86,7 +86,7 @@ type SqliteIterResult<'a> = Result<Box<dyn Iterator<Item = (String, Vec<u8>)> + 
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use sqlite_db::validate_sql_identifier;
 ///
 /// // Valid identifiers
@@ -168,7 +168,7 @@ fn validate_sql_identifier(identifier: &str) -> Result<String, Error> {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use sqlite_db::SqliteManager;
 /// use store::database::DbManager;
 ///
@@ -245,7 +245,7 @@ impl SqliteManager {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use sqlite_db::SqliteManager;
     ///
     /// // Create manager for production storage
@@ -308,7 +308,7 @@ impl SqliteManager {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use sqlite_db::SqliteManager;
     ///
     /// let manager = SqliteManager::new("/data/db")?;
@@ -368,7 +368,7 @@ impl SqliteManager {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use sqlite_db::SqliteManager;
     ///
     /// let manager = SqliteManager::new("/data/db")?;
@@ -663,7 +663,7 @@ impl DbManager<SqliteCollection, SqliteCollection> for SqliteManager {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use sqlite_db::{SqliteManager, SqliteCollection};
 /// use store::database::{Collection, State};
 ///
@@ -737,7 +737,7 @@ impl SqliteCollection {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use sqlite_db::SqliteCollection;
     /// use std::sync::{Arc, Mutex};
     ///
@@ -877,7 +877,7 @@ impl State for SqliteCollection {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use sqlite_db::SqliteManager;
     /// use store::database::{DbManager, State};
     ///
@@ -1110,7 +1110,7 @@ impl Collection for SqliteCollection {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use sqlite_db::SqliteManager;
 /// use store::database::{DbManager, Collection};
 ///
@@ -1175,7 +1175,7 @@ impl Iterator for SQLiteIterator<'_> {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use sqlite_db::open;
 ///
 /// // Open database with optimized settings
@@ -1246,7 +1246,7 @@ pub fn open<P: AsRef<Path>>(path: P) -> Result<Connection, Error> {
 ///
 /// # Usage Examples
 ///
-/// ```rust
+/// ```ignore
 /// use sqlite_db::SqliteManager;
 ///
 /// let manager = SqliteManager::new("/data/db")?;

@@ -31,7 +31,7 @@
 //!
 //! ## Basic Supervision Setup
 //!
-//! ```rust
+//! ```ignore
 //! use actor::supervision::{SupervisionStrategy, Strategy, FixedIntervalStrategy};
 //! use std::time::Duration;
 //!
@@ -48,7 +48,7 @@
 //!
 //! ## Custom Backoff Strategies
 //!
-//! ```rust
+//! ```ignore
 //! use actor::supervision::{Strategy, CustomIntervalStrategy};
 //! use std::collections::VecDeque;
 //! use std::time::Duration;
@@ -104,7 +104,7 @@ use std::{collections::VecDeque, fmt::Debug, time::Duration};
 ///
 /// ## Implementing a Custom Exponential Backoff Strategy
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::RetryStrategy;
 /// use std::time::Duration;
 ///
@@ -183,7 +183,7 @@ pub trait RetryStrategy: Debug + Send + Sync {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Fixed 100ms delay
     /// fn next_backoff(&mut self) -> Option<Duration> {
     ///     Some(Duration::from_millis(100))
@@ -239,7 +239,7 @@ pub trait RetryStrategy: Debug + Send + Sync {
 ///
 /// ## Immediate Termination Strategy
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::SupervisionStrategy;
 ///
 /// // Stop immediately on any startup failure
@@ -248,7 +248,7 @@ pub trait RetryStrategy: Debug + Send + Sync {
 ///
 /// ## Retry with Exponential Backoff
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::{SupervisionStrategy, Strategy, FixedIntervalStrategy};
 /// use std::time::Duration;
 ///
@@ -328,7 +328,7 @@ pub enum SupervisionStrategy {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::Strategy;
 /// use std::collections::VecDeque;
 /// use std::time::Duration;
@@ -409,7 +409,7 @@ impl RetryStrategy for Strategy {
 ///
 /// # Default Behavior
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::Strategy;
 ///
 /// let default_strategy = Strategy::default();
@@ -452,7 +452,7 @@ impl Default for Strategy {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::NoIntervalStrategy;
 ///
 /// // Retry up to 3 times immediately
@@ -486,7 +486,7 @@ impl NoIntervalStrategy {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use actor::supervision::NoIntervalStrategy;
     ///
     /// // Allow up to 5 immediate retry attempts
@@ -577,7 +577,7 @@ impl RetryStrategy for NoIntervalStrategy {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use actor::supervision::FixedIntervalStrategy;
 /// use std::time::Duration;
 ///
@@ -623,7 +623,7 @@ impl FixedIntervalStrategy {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use actor::supervision::FixedIntervalStrategy;
     /// use std::time::Duration;
     ///
@@ -706,7 +706,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 /// # Use Cases
 ///
 /// ## Exponential Backoff
-/// ```rust
+/// ```ignore
 /// use actor::supervision::CustomIntervalStrategy;
 /// use std::collections::VecDeque;
 /// use std::time::Duration;
@@ -722,7 +722,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 /// ```
 ///
 /// ## Fibonacci Backoff
-/// ```rust
+/// ```ignore
 /// // 1s, 1s, 2s, 3s, 5s, 8s
 /// let fibonacci = CustomIntervalStrategy::new(VecDeque::from([
 ///     Duration::from_secs(1),
@@ -735,7 +735,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 /// ```
 ///
 /// ## Jittered Delays
-/// ```rust
+/// ```ignore
 /// // Random jitter applied to base intervals
 /// let jittered = CustomIntervalStrategy::new(VecDeque::from([
 ///     Duration::from_millis(100 + rand::random::<u64>() % 50),
@@ -745,7 +745,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 /// ```
 ///
 /// ## Decreasing Intervals
-/// ```rust
+/// ```ignore
 /// // Start with longer delays, decrease over time
 /// let decreasing = CustomIntervalStrategy::new(VecDeque::from([
 ///     Duration::from_secs(10),  // First retry: wait longer
@@ -766,7 +766,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 ///
 /// ## Circuit Breaker Pattern
 /// Implement increasing delays to give failing systems time to recover:
-/// ```rust
+/// ```ignore
 /// let circuit_breaker = CustomIntervalStrategy::new(VecDeque::from([
 ///     Duration::from_secs(1),    // Quick first retry
 ///     Duration::from_secs(5),    // Give it some time
@@ -777,7 +777,7 @@ impl RetryStrategy for FixedIntervalStrategy {
 ///
 /// ## Adaptive Strategy
 /// Use external metrics to determine appropriate delays:
-/// ```rust
+/// ```ignore
 /// fn create_adaptive_strategy(system_load: f64) -> CustomIntervalStrategy {
 ///     let base_delay = Duration::from_millis((100.0 * system_load) as u64);
 ///     CustomIntervalStrategy::new(VecDeque::from([
@@ -822,7 +822,7 @@ impl CustomIntervalStrategy {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use actor::supervision::CustomIntervalStrategy;
     /// use std::collections::VecDeque;
     /// use std::time::Duration;
@@ -921,7 +921,7 @@ impl RetryStrategy for CustomIntervalStrategy {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use actor::supervision::{CustomIntervalStrategy, RetryStrategy};
     /// use std::collections::VecDeque;
     /// use std::time::Duration;

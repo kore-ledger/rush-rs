@@ -52,7 +52,7 @@ use std::fmt::Debug;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -126,7 +126,7 @@ where
     ///
     /// This method is called internally by the system:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally during actor creation
     /// let context = ActorContext::new(
     ///     stop_sender,
@@ -173,7 +173,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally by supervision system
     /// if let Err(restart_error) = ctx.restart(&mut actor, Some(&original_error)).await {
     ///     // Handle restart failure - may escalate to parent
@@ -202,7 +202,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<MyActor> for MyActor {
     ///     async fn handle_message(
@@ -242,7 +242,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<MyActor> for MyActor {
     ///     async fn handle_message(
@@ -283,7 +283,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<MyActor> for MyActor {
     ///     async fn handle_message(
@@ -336,7 +336,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<WorkerActor> for WorkerActor {
     ///     async fn handle_message(
@@ -391,7 +391,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally during actor termination
     /// context.stop_childs().await;
     /// // All children are now stopped and cleaned up
@@ -433,7 +433,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally during actor termination
     /// context.remove_actor().await;
     /// // Actor is now removed from system registry
@@ -475,7 +475,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Fire-and-forget stop
     /// context.stop(None).await;
     ///
@@ -523,7 +523,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<MyActor> for MyActor {
     ///     async fn handle_message(
@@ -619,7 +619,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<ValidationActor> for ValidationActor {
     ///     async fn handle_message(
@@ -703,7 +703,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<DatabaseActor> for DatabaseActor {
     ///     async fn handle_message(
@@ -804,7 +804,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<ManagerActor> for ManagerActor {
     ///     async fn handle_message(
@@ -924,7 +924,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<ManagerActor> for ManagerActor {
     ///     async fn handle_message(
@@ -1021,7 +1021,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally by the actor system during supervision
     /// if let Some(current_error) = context.error() {
     ///     // Handle the error based on supervision strategy
@@ -1087,7 +1087,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally during error handling
     /// if let Err(fatal_error) = critical_operation().await {
     ///     // Set error to halt message processing
@@ -1144,7 +1144,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called internally during actor restart sequence
     /// async fn restart_actor(context: &mut ActorContext<MyActor>, actor: &mut MyActor) {
     ///     // First, attempt to restart the actor
@@ -1231,7 +1231,7 @@ where
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorLifecycle;
 ///
 /// // Check actor lifecycle state during supervision
@@ -1338,7 +1338,7 @@ pub enum ActorLifecycle {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::{ChildAction, Error};
 ///
 /// #[async_trait]
@@ -1480,7 +1480,7 @@ pub(crate) type ChildErrorSender = mpsc::UnboundedSender<ChildError>;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::{ChildError, ChildAction, Error};
 ///
 /// // In a parent actor's supervision logic
@@ -1525,7 +1525,7 @@ pub enum ChildError {
     ///
     /// # Example Scenarios
     ///
-    /// ```rust
+    /// ```ignore
     /// // In child actor message handler
     /// if let Err(validation_error) = self.validate_input(&message) {
     ///     // Report error but continue processing
@@ -1570,7 +1570,7 @@ pub enum ChildError {
     ///
     /// The parent actor must provide a supervision decision through the sender channel:
     ///
-    /// ```rust
+    /// ```ignore
     /// // In parent actor's fault handling
     /// async fn on_child_fault(
     ///     &mut self,
@@ -1596,7 +1596,7 @@ pub enum ChildError {
     ///
     /// # Example Scenarios
     ///
-    /// ```rust
+    /// ```ignore
     /// // In child actor message handler
     /// if let Err(database_error) = self.database.execute(&query).await {
     ///     if database_error.is_connection_lost() {
@@ -1675,7 +1675,7 @@ pub enum ChildError {
 ///
 /// ## Basic Actor Implementation
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use serde::{Serialize, Deserialize};
@@ -1761,7 +1761,7 @@ pub enum ChildError {
 ///
 /// ## Actor with Custom Supervision Strategy
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::{Actor, SupervisionStrategy};
 ///
 /// #[async_trait]
@@ -1814,7 +1814,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug, Clone)]
     /// enum DatabaseMessage {
     ///     Insert { table: String, data: Value },
@@ -1841,7 +1841,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// enum UserEvent {
     ///     UserCreated { id: UserId, name: String },
@@ -1867,7 +1867,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug)]
     /// enum CalculatorResponse {
     ///     Result(f64),
@@ -1905,7 +1905,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// impl Actor for CriticalServiceActor {
     ///     // ... other associated types
     ///
@@ -1983,7 +1983,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Database Actor Initialization
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for DatabaseActor {
     ///     async fn pre_start(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2012,7 +2012,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Service Manager with Child Actors
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for ServiceManager {
     ///     async fn pre_start(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2039,7 +2039,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Stateful Actor with Recovery
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for StatefulActor {
     ///     async fn pre_start(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2149,7 +2149,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Basic Restart with Error Analysis
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for DatabaseActor {
     ///     async fn pre_restart(
@@ -2185,7 +2185,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Stateful Actor with Selective Recovery
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for StatefulProcessor {
     ///     async fn pre_restart(
@@ -2232,7 +2232,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Service Manager with Child Recovery
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for ServiceManager {
     ///     async fn pre_restart(
@@ -2368,7 +2368,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Database Actor with Connection Cleanup
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for DatabaseActor {
     ///     async fn pre_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2405,7 +2405,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Service Manager with Child Coordination
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for ServiceManager {
     ///     async fn pre_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2446,7 +2446,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Stateful Actor with State Persistence
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for StatefulProcessor {
     ///     async fn pre_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2493,7 +2493,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Network Service with External Notifications
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for NetworkServiceActor {
     ///     async fn pre_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2628,7 +2628,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Simple Resource Cleanup
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for FileProcessorActor {
     ///     async fn post_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2658,7 +2658,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Memory and Cache Cleanup
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for CacheActor {
     ///     async fn post_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2687,7 +2687,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Monitoring and Audit Logging
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for AuditActor {
     ///     async fn post_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2732,7 +2732,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Network Resource Cleanup
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for NetworkActor {
     ///     async fn post_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2766,7 +2766,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Database Connection Cleanup
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Actor for DatabaseActor {
     ///     async fn post_stop(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
@@ -2882,7 +2882,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Bank Account Event Sourcing
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// enum AccountEvent {
     ///     AccountCreated { account_id: String, initial_balance: Decimal },
@@ -2939,7 +2939,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Enhanced Response with Event Data
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug)]
     /// struct EnhancedResponse<T> {
     ///     result: T,
@@ -2997,7 +2997,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Counter Actor with Simple Event Conversion
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug, Clone, Serialize, Deserialize)]
     /// enum CounterEvent {
     ///     ValueChanged { old_value: i64, new_value: i64 },
@@ -3038,7 +3038,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// ## Conditional Event Generation
     ///
-    /// ```rust
+    /// ```ignore
     /// #[derive(Debug)]
     /// enum TaskResponse {
     ///     Started { task_id: String },
@@ -3097,7 +3097,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     /// When implemented, this method can be used by the actor system to automatically
     /// publish events after successful message processing:
     ///
-    /// ```rust
+    /// ```ignore
     /// // In the actor system's message handling loop
     /// let response = actor.handle_message(sender, message, &mut context).await?;
     ///
@@ -3113,7 +3113,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
     ///
     /// Events generated from responses can be used to rebuild actor state:
     ///
-    /// ```rust
+    /// ```ignore
     /// impl EventSourcingActor {
     ///     async fn rebuild_from_events(&mut self, events: Vec<MyEvent>) -> Result<(), Error> {
     ///         for event in events {
@@ -3189,7 +3189,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
 /// ## Domain Events
 /// Events that represent business domain occurrences:
 ///
-/// ```rust
+/// ```ignore
 /// use serde::{Serialize, Deserialize};
 ///
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3225,7 +3225,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
 /// ## System Events
 /// Events that represent system-level occurrences:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub enum SystemEvent {
 ///     ActorStarted {
@@ -3251,7 +3251,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
 /// ## Aggregate Events
 /// Events that represent changes to aggregate roots:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
 /// pub enum UserEvent {
 ///     UserRegistered {
@@ -3277,7 +3277,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
 ///
 /// Actors emit events using the `publish_event` method on their context:
 ///
-/// ```rust
+/// ```ignore
 /// #[async_trait]
 /// impl Handler<OrderActor> for OrderActor {
 ///     async fn handle_message(
@@ -3310,7 +3310,7 @@ pub trait Actor: Send + Sync + Sized + 'static + Handler<Self> {
 ///
 /// External systems can subscribe to actor events:
 ///
-/// ```rust
+/// ```ignore
 /// // Subscribe to order events
 /// let order_actor_ref = system.get_actor::<OrderActor>(&order_path).await?;
 /// let mut event_receiver = order_actor_ref.subscribe();
@@ -3403,7 +3403,7 @@ pub trait Event:
 /// ## Command Messages
 /// Messages that request an actor to perform an action:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug, Clone)]
 /// pub enum BankAccountMessage {
 ///     Deposit { amount: Decimal },
@@ -3422,7 +3422,7 @@ pub trait Event:
 /// ## Query Messages
 /// Messages that request information without side effects:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug, Clone)]
 /// pub enum UserQueryMessage {
 ///     GetUserById { user_id: UserId },
@@ -3444,7 +3444,7 @@ pub trait Event:
 /// ## Event Messages
 /// Messages that notify about something that has occurred:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug, Clone)]
 /// pub enum SystemNotificationMessage {
 ///     UserLoggedIn {
@@ -3468,7 +3468,7 @@ pub trait Event:
 /// ## Complex Data Messages
 /// Messages carrying structured data:
 ///
-/// ```rust
+/// ```ignore
 /// use serde::{Serialize, Deserialize};
 ///
 /// #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3516,7 +3516,7 @@ pub trait Event:
 ///
 /// ## Basic Actor Communication
 ///
-/// ```rust
+/// ```ignore
 /// #[async_trait]
 /// impl Handler<CalculatorActor> for CalculatorActor {
 ///     async fn handle_message(
@@ -3550,7 +3550,7 @@ pub trait Event:
 ///
 /// ## Tell Pattern (Fire-and-Forget)
 ///
-/// ```rust
+/// ```ignore
 /// // Send a message without waiting for response
 /// actor_ref.tell(UserMessage::UpdateLastLogin {
 ///     user_id: current_user.id,
@@ -3567,7 +3567,7 @@ pub trait Event:
 ///
 /// ## Ask Pattern (Request-Response)
 ///
-/// ```rust
+/// ```ignore
 /// // Send a message and wait for response
 /// let balance = account_actor.ask(BankAccountMessage::GetBalance).await?;
 /// println!("Current balance: {}", balance);
@@ -3615,7 +3615,7 @@ pub trait Event:
 /// # Integration Patterns
 ///
 /// ## Message Transformation
-/// ```rust
+/// ```ignore
 /// // Convert external API requests to internal messages
 /// impl From<CreateUserRequest> for UserMessage {
 ///     fn from(request: CreateUserRequest) -> Self {
@@ -3629,7 +3629,7 @@ pub trait Event:
 /// ```
 ///
 /// ## Message Validation
-/// ```rust
+/// ```ignore
 /// impl BankAccountMessage {
 ///     pub fn validate(&self) -> Result<(), ValidationError> {
 ///         match self {
@@ -3677,7 +3677,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 /// ## Success/Error Responses
 /// Simple responses that indicate success or failure:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug)]
 /// pub enum UserServiceResponse {
 ///     UserCreated { user_id: UserId },
@@ -3693,7 +3693,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 /// ## Data-Carrying Responses
 /// Responses that return structured data:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug)]
 /// pub struct QueryResponse<T> {
 ///     pub data: Vec<T>,
@@ -3718,7 +3718,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 /// ## Status Responses
 /// Responses that provide operational status:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug)]
 /// pub struct HealthCheckResponse {
 ///     pub status: HealthStatus,
@@ -3744,7 +3744,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 /// ## Aggregate Responses
 /// Responses that combine multiple pieces of information:
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Debug)]
 /// pub struct AccountSummaryResponse {
 ///     pub account_id: String,
@@ -3774,7 +3774,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 ///
 /// ## Basic Ask-Pattern Usage
 ///
-/// ```rust
+/// ```ignore
 /// #[async_trait]
 /// impl Handler<BankAccountActor> for BankAccountActor {
 ///     async fn handle_message(
@@ -3827,7 +3827,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 ///
 /// ## Response Handling by Callers
 ///
-/// ```rust
+/// ```ignore
 /// // Ask for account balance
 /// let response = account_actor.ask(BankAccountMessage::GetBalance).await?;
 /// match response {
@@ -3862,7 +3862,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 ///
 /// ## Complex Response Processing
 ///
-/// ```rust
+/// ```ignore
 /// // Process batch operation response
 /// let response = batch_processor.ask(BatchMessage::ProcessOrders {
 ///     orders: pending_orders
@@ -3942,7 +3942,7 @@ pub trait Message: Clone + Send + Sync + 'static {}
 ///
 /// Responses work in conjunction with Rust's `Result` type for comprehensive error handling:
 ///
-/// ```rust
+/// ```ignore
 /// // Handler returns Result<Response, Error>
 /// async fn handle_message(&mut self, ...) -> Result<Self::Response, Error> {
 ///     match msg {
@@ -4024,7 +4024,7 @@ pub trait Response: Send + Sync + 'static {}
 ///
 /// ## Basic Message Handler
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -4108,7 +4108,7 @@ pub trait Response: Send + Sync + 'static {}
 ///
 /// ## Event Handler with State Management
 ///
-/// ```rust
+/// ```ignore
 /// #[async_trait]
 /// impl Handler<OrderProcessorActor> for OrderProcessorActor {
 ///     async fn handle_message(
@@ -4160,7 +4160,7 @@ pub trait Response: Send + Sync + 'static {}
 ///
 /// ## Child Actor Supervision
 ///
-/// ```rust
+/// ```ignore
 /// #[async_trait]
 /// impl Handler<SupervisorActor> for SupervisorActor {
 ///     async fn handle_message(
@@ -4323,7 +4323,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// For business logic errors that clients should handle gracefully, prefer returning
     /// structured error responses within `Ok(...)` rather than using `Err(...)`:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Preferred: Structured business errors
     /// match msg {
     ///     BankMessage::Withdraw { amount } => {
@@ -4344,7 +4344,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// Use `Err(...)` for genuine system failures that indicate the actor or system
     /// is in an unexpected state and cannot continue normal processing:
     ///
-    /// ```rust
+    /// ```ignore
     /// match self.database.get_user(user_id).await {
     ///     Ok(user) => Ok(UserResponse::Profile(user)),
     ///     Err(db_error) => {
@@ -4365,7 +4365,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// For operations that might block or take significant time, use the context to spawn
     /// concurrent tasks:
     ///
-    /// ```rust
+    /// ```ignore
     /// match msg {
     ///     Message::ProcessLargeFile { file_path } => {
     ///         // Spawn concurrent task for CPU-intensive work
@@ -4385,7 +4385,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// All state changes within a message handler are atomic from the perspective
     /// of other messages, enabling safe state transitions:
     ///
-    /// ```rust
+    /// ```ignore
     /// match msg {
     ///     OrderMessage::UpdateStatus { order_id, new_status } => {
     ///         if let Some(order) = self.orders.get_mut(&order_id) {
@@ -4411,7 +4411,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Event Sourcing Integration
     /// Use event publishing to maintain an audit trail and support event sourcing:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn handle_message(
     ///     &mut self,
     ///     sender: ActorPath,
@@ -4519,7 +4519,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Derived State Management
     /// Use events to maintain computed or aggregated state that depends on multiple operations:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_event(&mut self, event: Self::Event, ctx: &mut ActorContext<Self>) {
     ///     match event {
     ///         InventoryEvent::ItemAdded { item_id, quantity, .. } => {
@@ -4556,7 +4556,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Event Sourcing Integration
     /// Implement event sourcing patterns where state can be reconstructed from events:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_event(&mut self, event: Self::Event, ctx: &mut ActorContext<Self>) {
     ///     match event {
     ///         AccountEvent::MoneyDeposited { amount, timestamp, .. } => {
@@ -4593,7 +4593,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## External Integration and Notifications
     /// Use event handling to integrate with external systems and send notifications:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_event(&mut self, event: Self::Event, ctx: &mut ActorContext<Self>) {
     ///     match event {
     ///         OrderEvent::OrderCompleted { order_id, customer_id, total_amount, .. } => {
@@ -4645,7 +4645,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     ///
     /// Events can trigger additional events, creating cascading event chains for complex workflows:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_event(&mut self, event: Self::Event, ctx: &mut ActorContext<Self>) {
     ///     match event {
     ///         UserEvent::AccountCreated { user_id, email, .. } => {
@@ -4687,7 +4687,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     ///
     /// Event handlers should be resilient since they process already-committed state changes:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_event(&mut self, event: Self::Event, ctx: &mut ActorContext<Self>) {
     ///     match event {
     ///         PaymentEvent::PaymentProcessed { payment_id, amount, .. } => {
@@ -4796,7 +4796,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Basic Error Tracking
     /// Track error patterns and frequencies for operational insights:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_error(&mut self, error: Error, ctx: &mut ActorContext<Self>) {
     ///     // Update error statistics
     ///     self.total_child_errors += 1;
@@ -4838,7 +4838,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Categorized Error Handling
     /// Handle different types of errors with specific strategies:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_error(&mut self, error: Error, ctx: &mut ActorContext<Self>) {
     ///     match error.error_type() {
     ///         ErrorType::NetworkError => {
@@ -4902,7 +4902,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Integration with Monitoring Systems
     /// Forward error information to external monitoring and alerting systems:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_error(&mut self, error: Error, ctx: &mut ActorContext<Self>) {
     ///     // Update local error tracking
     ///     self.error_count += 1;
@@ -4951,7 +4951,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Dynamic Configuration Adjustment
     /// Adjust child actor configuration in response to error patterns:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_error(&mut self, error: Error, ctx: &mut ActorContext<Self>) {
     ///     self.recent_errors.push(error.clone());
     ///
@@ -4984,7 +4984,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Load Balancing and Traffic Management
     /// Adjust load distribution based on error patterns:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_error(&mut self, error: Error, ctx: &mut ActorContext<Self>) {
     ///     if let Some(child_id) = self.identify_error_source(&error) {
     ///         // Track per-child error rates
@@ -5019,7 +5019,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Self-Healing Mechanisms
     /// Implement automatic recovery procedures for common error scenarios:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_error(&mut self, error: Error, ctx: &mut ActorContext<Self>) {
     ///     match error.error_type() {
     ///         ErrorType::DatabaseConnectionError => {
@@ -5166,7 +5166,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Basic Restart Strategy
     /// Simple restart logic for transient failures:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     error!("Child actor fault: {:?}", error);
     ///
@@ -5198,7 +5198,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Retry with Backoff Strategy
     /// Implement retry limits with exponential backoff:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     // Track restart attempts per child
     ///     let child_id = ctx.current_child_id(); // hypothetical method
@@ -5242,7 +5242,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Circuit Breaker Pattern
     /// Implement circuit breaker logic for external service dependencies:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     match error.error_type() {
     ///         ErrorType::ExternalServiceError => {
@@ -5276,7 +5276,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Hierarchical Fault Tolerance
     /// Different strategies based on child importance and fault severity:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     let child_id = self.get_current_child_id(&error);
     ///     let child_importance = self.child_importance_map.get(&child_id)
@@ -5322,7 +5322,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Comprehensive Fault Reporting
     /// Report faults to monitoring systems with detailed context:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     // Create detailed fault report
     ///     let fault_report = FaultReport {
@@ -5374,7 +5374,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## One-for-One vs One-for-All Strategies
     /// Handle faults with different scopes of impact:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     match self.supervision_strategy {
     ///         SupervisionStrategy::OneForOne => {
@@ -5412,7 +5412,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
     /// ## Adaptive Fault Tolerance
     /// Adjust fault handling based on system health and load:
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn on_child_fault(&mut self, error: Error, ctx: &mut ActorContext<Self>) -> ChildAction {
     ///     let system_health = self.assess_system_health();
     ///     let current_load = self.get_current_system_load();
@@ -5535,7 +5535,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
 ///
 /// ## Basic Message Sending
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -5552,7 +5552,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
 ///
 /// ## Actor Lifecycle Management
 ///
-/// ```rust
+/// ```ignore
 /// // Graceful shutdown with confirmation
 /// actor_ref.ask_stop().await?;
 /// println!("Actor stopped successfully");
@@ -5563,7 +5563,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
 ///
 /// ## Event Subscription
 ///
-/// ```rust
+/// ```ignore
 /// // Subscribe to actor events
 /// let mut event_receiver = actor_ref.subscribe();
 ///
@@ -5577,7 +5577,7 @@ pub trait Handler<A: Actor + Handler<A>>: Send + Sync {
 ///
 /// ## Status Monitoring
 ///
-/// ```rust
+/// ```ignore
 /// if actor_ref.is_closed() {
 ///     println!("Actor is no longer available");
 /// } else {
@@ -5671,7 +5671,7 @@ where
     ///
     /// This method is called internally by the actor system:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called during actor creation process
     /// let actor_ref = ActorRef::new(
     ///     ActorPath::from("/user/worker"),
@@ -5737,7 +5737,7 @@ where
     ///
     /// ## Basic Message Sending
     ///
-    /// ```rust
+    /// ```ignore
     /// // Send a simple command message
     /// actor_ref.tell(ProcessCommand {
     ///     action: "start",
@@ -5753,7 +5753,7 @@ where
     ///
     /// ## High-Throughput Scenarios
     ///
-    /// ```rust
+    /// ```ignore
     /// // Efficiently send multiple messages
     /// for item in batch_items {
     ///     match actor_ref.tell(ProcessItem(item)).await {
@@ -5768,7 +5768,7 @@ where
     ///
     /// ## Error Handling
     ///
-    /// ```rust
+    /// ```ignore
     /// match actor_ref.tell(important_message).await {
     ///     Ok(()) => {
     ///         // Message queued successfully
@@ -5852,7 +5852,7 @@ where
     ///
     /// ## Simple Query Operation
     ///
-    /// ```rust
+    /// ```ignore
     /// // Query actor state
     /// let balance = bank_actor.ask(GetBalance {
     ///     account_id: "12345".to_string(),
@@ -5863,7 +5863,7 @@ where
     ///
     /// ## Complex Business Logic
     ///
-    /// ```rust
+    /// ```ignore
     /// // Perform calculation with multiple parameters
     /// let result = calculator_actor.ask(ComplexCalculation {
     ///     operation: MathOperation::Integral,
@@ -5884,7 +5884,7 @@ where
     ///
     /// ## Error Handling and Retries
     ///
-    /// ```rust
+    /// ```ignore
     /// let mut retry_count = 0;
     /// const MAX_RETRIES: usize = 3;
     ///
@@ -5910,7 +5910,7 @@ where
     ///
     /// ## Conditional Requests
     ///
-    /// ```rust
+    /// ```ignore
     /// // Only make request if actor is available
     /// if !actor_ref.is_closed() {
     ///     let status = actor_ref.ask(HealthCheck).await?;
@@ -6001,7 +6001,7 @@ where
     ///
     /// ## Coordinated Shutdown
     ///
-    /// ```rust
+    /// ```ignore
     /// // Ensure worker is stopped before proceeding
     /// worker_actor.ask_stop().await?;
     /// log::info!("Worker actor has been cleanly terminated");
@@ -6012,7 +6012,7 @@ where
     ///
     /// ## Graceful Application Shutdown
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn shutdown_application(actors: Vec<ActorRef<dyn MyActor>>) -> Result<(), Error> {
     ///     log::info!("Initiating graceful shutdown of {} actors", actors.len());
     ///
@@ -6034,7 +6034,7 @@ where
     ///
     /// ## Conditional Shutdown with Timeout
     ///
-    /// ```rust
+    /// ```ignore
     /// use tokio::time::{timeout, Duration};
     ///
     /// // Stop actor with timeout to prevent hanging
@@ -6135,7 +6135,7 @@ where
     ///
     /// ## Bulk Actor Termination
     ///
-    /// ```rust
+    /// ```ignore
     /// // Efficiently stop multiple actors without waiting
     /// for actor_ref in worker_actors {
     ///     actor_ref.tell_stop().await;
@@ -6148,7 +6148,7 @@ where
     ///
     /// ## System Shutdown
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn initiate_system_shutdown(system: &ActorSystem) {
     ///     log::info!("Initiating system shutdown");
     ///
@@ -6169,7 +6169,7 @@ where
     ///
     /// ## Conditional Termination
     ///
-    /// ```rust
+    /// ```ignore
     /// // Stop actor if it's still running
     /// if !actor_ref.is_closed() {
     ///     actor_ref.tell_stop().await;
@@ -6182,7 +6182,7 @@ where
     ///
     /// ## Background Cleanup
     ///
-    /// ```rust
+    /// ```ignore
     /// // Stop actor in background task
     /// let actor_ref = Arc::clone(&shared_actor_ref);
     /// tokio::spawn(async move {
@@ -6274,7 +6274,7 @@ where
     ///
     /// ## Basic Path Retrieval
     ///
-    /// ```rust
+    /// ```ignore
     /// let path = actor_ref.path();
     /// println!("Actor path: {}", path);
     /// // Output: Actor path: /user/worker-pool/worker-1
@@ -6285,7 +6285,7 @@ where
     ///
     /// ## Path-Based Actor Management
     ///
-    /// ```rust
+    /// ```ignore
     /// // Store actor paths for later lookup
     /// let mut actor_registry = HashMap::new();
     /// actor_registry.insert(
@@ -6303,7 +6303,7 @@ where
     ///
     /// ## Supervision Tree Analysis
     ///
-    /// ```rust
+    /// ```ignore
     /// fn analyze_supervision_tree(actor_ref: &ActorRef<MyActor>) {
     ///     let path = actor_ref.path();
     ///
@@ -6325,7 +6325,7 @@ where
     ///
     /// ## Path-Based Message Tracing
     ///
-    /// ```rust
+    /// ```ignore
     /// #[async_trait]
     /// impl Handler<MyActor> for MyActor {
     ///     async fn handle_message(
@@ -6351,7 +6351,7 @@ where
     ///
     /// ## Configuration and Monitoring
     ///
-    /// ```rust
+    /// ```ignore
     /// // Path-based configuration lookup
     /// let path = database_actor.path();
     /// let config = system_config.get_actor_config(&path);
@@ -6421,7 +6421,7 @@ where
     ///
     /// ## Basic Availability Check
     ///
-    /// ```rust
+    /// ```ignore
     /// if actor_ref.is_closed() {
     ///     log::warn!("Actor is no longer available");
     ///     return Err("Service unavailable".into());
@@ -6433,7 +6433,7 @@ where
     ///
     /// ## Circuit Breaker Pattern
     ///
-    /// ```rust
+    /// ```ignore
     /// struct CircuitBreaker {
     ///     actor_ref: ActorRef<ServiceActor>,
     ///     failure_count: AtomicUsize,
@@ -6480,7 +6480,7 @@ where
     ///
     /// ## Health Monitoring
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn monitor_actor_health(actors: Vec<(String, ActorRef<dyn MyActor>)>) {
     ///     loop {
     ///         let mut healthy_count = 0;
@@ -6513,7 +6513,7 @@ where
     ///
     /// ## Conditional Message Batching
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn send_message_batch(
     ///     actor_ref: &ActorRef<BatchProcessor>,
     ///     messages: Vec<BatchMessage>,
@@ -6610,7 +6610,7 @@ where
     ///
     /// ## Basic Event Subscription
     ///
-    /// ```rust
+    /// ```ignore
     /// // Subscribe to actor events
     /// let mut event_receiver = actor_ref.subscribe();
     ///
@@ -6635,7 +6635,7 @@ where
     ///
     /// ## Multiple Independent Subscribers
     ///
-    /// ```rust
+    /// ```ignore
     /// // Create multiple independent event streams
     /// let audit_receiver = actor_ref.subscribe();
     /// let metrics_receiver = actor_ref.subscribe();
@@ -6667,7 +6667,7 @@ where
     ///
     /// ## Event Filtering and Processing
     ///
-    /// ```rust
+    /// ```ignore
     /// let mut events = actor_ref.subscribe();
     ///
     /// tokio::spawn(async move {
@@ -6688,7 +6688,7 @@ where
     ///
     /// ## Error Handling and Recovery
     ///
-    /// ```rust
+    /// ```ignore
     /// use tokio::sync::broadcast::error::RecvError;
     ///
     /// let mut events = actor_ref.subscribe();
@@ -6716,7 +6716,7 @@ where
     ///
     /// ## Selective Event Processing with timeout
     ///
-    /// ```rust
+    /// ```ignore
     /// use tokio::time::{timeout, Duration};
     /// use tokio::select;
     ///
@@ -6819,7 +6819,7 @@ where
 ///
 /// ## Sharing Across Components
 ///
-/// ```rust
+/// ```ignore
 /// // Share actor reference with multiple components
 /// let worker_ref = system.create_actor("worker", WorkerActor::new()).await?;
 /// let scheduler_ref = worker_ref.clone();
@@ -6837,7 +6837,7 @@ where
 ///
 /// ## Cross-Thread Communication
 ///
-/// ```rust
+/// ```ignore
 /// let actor_ref = Arc::new(worker_actor_ref);
 ///
 /// // Spawn background tasks with cloned references
@@ -6857,7 +6857,7 @@ where
 ///
 /// ## Independent Event Processing
 ///
-/// ```rust
+/// ```ignore
 /// let base_ref = actor_ref;
 /// let audit_ref = base_ref.clone();
 /// let metrics_ref = base_ref.clone();

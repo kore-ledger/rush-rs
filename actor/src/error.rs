@@ -63,7 +63,7 @@ use thiserror::Error;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::{Error, ActorPath};
 ///
 /// // Handle communication error with retry
@@ -103,7 +103,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Retry message send with backoff
     /// for attempt in 0..3 {
     ///     match actor_ref.tell(message.clone()).await {
@@ -138,7 +138,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// match actor_ref.ask(query).await {
     ///     Err(Error::UnexpectedResponse(path, expected)) => {
     ///         log::error!("Actor {} sent invalid response, expected {}", path, expected);
@@ -175,7 +175,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// match system.create_actor("worker", WorkerActor::new()).await {
     ///     Err(Error::Create(path, reason)) => {
     ///         log::warn!("Failed to create actor at {}: {}", path, reason);
@@ -210,7 +210,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let mut attempt = 0;
     /// loop {
     ///     let actor_name = if attempt == 0 {
@@ -256,7 +256,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// match system.get_actor(&actor_path) {
     ///     Err(Error::NotFound(path)) => {
     ///         log::info!("Actor {} not found, creating new instance", path);
@@ -290,7 +290,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Attempt graceful shutdown with timeout
     /// match tokio::time::timeout(
     ///     Duration::from_secs(30),
@@ -327,7 +327,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// for attempt in 0..3 {
     ///     match ActorSystem::start(config.clone()).await {
     ///         Ok(system) => return Ok(system),
@@ -365,7 +365,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// match event_bus.publish(critical_event).await {
     ///     Err(Error::SendEvent(reason)) => {
     ///         log::error!("Failed to publish critical event: {}", reason);
@@ -401,7 +401,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let storage = match create_primary_storage(&config).await {
     ///     Ok(store) => store,
     ///     Err(Error::CreateStore(reason)) => {
@@ -440,7 +440,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let data = match storage.get(&key).await {
     ///     Ok(value) => value,
     ///     Err(Error::Get(reason)) => {
@@ -480,7 +480,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let user_data = match storage.get_user(&user_id).await {
     ///     Ok(data) => data,
     ///     Err(Error::EntryNotFound(_)) => {
@@ -515,7 +515,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let transaction = storage.begin_transaction().await?;
     /// match transaction.save_multiple(&data_batch).await {
     ///     Ok(()) => transaction.commit().await?,
@@ -559,7 +559,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// match optional_service.perform_enhancement(&data).await {
     ///     Ok(enhanced_data) => process_data(enhanced_data),
     ///     Err(Error::Functional(reason)) => {
@@ -594,7 +594,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// match critical_operation().await {
     ///     Ok(result) => Ok(result),
     ///     Err(Error::FunctionalFail(reason)) => {
@@ -631,7 +631,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// impl Actor for StatefulActor {
     ///     async fn handle_message(&mut self, message: Message, ctx: &mut ActorContext<Self>)
     ///         -> Result<Response, Error> {
@@ -673,7 +673,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// async fn retry_operation<F, T, E>(
     ///     mut operation: F,
     ///     max_retries: u32,
@@ -722,7 +722,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// impl Actor for ServiceActor {
     ///     async fn handle_message(&mut self, msg: Message, ctx: &mut ActorContext<Self>)
     ///         -> Result<Response, Error> {

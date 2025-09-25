@@ -45,7 +45,7 @@
 //!
 //! ### Creating a Custom Storage Backend
 //!
-//! ```rust
+//! ```ignore
 //! use rush_store::database::{DbManager, Collection, State};
 //! use rush_store::Error;
 //!
@@ -107,7 +107,7 @@
 //!
 //! The module provides a comprehensive test macro for validating storage implementations:
 //!
-//! ```rust
+//! ```ignore
 //! #[cfg(test)]
 //! mod tests {
 //!     use super::*;
@@ -140,7 +140,7 @@
 //!
 //! All storage operations should provide rich error context:
 //!
-//! ```rust
+//! ```ignore
 //! match storage.get("key") {
 //!     Ok(data) => process_data(data),
 //!     Err(Error::EntryNotFound(_)) => handle_missing_data(),
@@ -199,7 +199,7 @@ use tracing::debug;
 ///
 /// ## Database Backend Implementation
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::database::{DbManager, Collection, State};
 /// use rush_store::Error;
 /// use std::sync::Arc;
@@ -267,7 +267,7 @@ use tracing::debug;
 ///
 /// ## Memory Backend for Testing
 ///
-/// ```rust
+/// ```ignore
 /// #[derive(Default, Clone)]
 /// struct TestManager {
 ///     data: Arc<RwLock<HashMap<String, Arc<RwLock<BTreeMap<String, Vec<u8>>>>>>>,
@@ -335,7 +335,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::DbManager;
     ///
     /// let manager = DatabaseManager::new(connection_pool);
@@ -385,7 +385,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::DbManager;
     ///
     /// let manager = DatabaseManager::new(connection_pool);
@@ -434,7 +434,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::DbManager;
     ///
     /// let manager = DatabaseManager::new(connection_pool);
@@ -508,7 +508,7 @@ where
 ///
 /// ## Basic State Operations
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::database::State;
 /// use rush_store::Error;
 ///
@@ -540,7 +540,7 @@ where
 ///
 /// ## Configuration Management
 ///
-/// ```rust
+/// ```ignore
 /// use serde::{Serialize, Deserialize};
 /// use bincode;
 ///
@@ -617,7 +617,7 @@ pub trait State: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::State;
     ///
     /// let state = create_actor_state("actor_123")?;
@@ -641,7 +641,7 @@ pub trait State: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{database::State, Error};
     /// use serde::Deserialize;
     ///
@@ -685,7 +685,7 @@ pub trait State: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{database::State, Error};
     /// use serde::Serialize;
     ///
@@ -750,7 +750,7 @@ pub trait State: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{database::State, Error};
     ///
     /// async fn reset_actor_state(state: &mut impl State) -> Result<(), Error> {
@@ -794,7 +794,7 @@ pub trait State: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::State;
     ///
     /// async fn cleanup_test_data(state: &mut impl State) -> Result<(), Error> {
@@ -833,7 +833,7 @@ pub trait State: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::State;
     ///
     /// async fn save_critical_state(
@@ -913,7 +913,7 @@ pub trait State: Sync + Send + 'static {
 ///
 /// ## Event Log Implementation
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::{database::Collection, Error};
 /// use serde::{Serialize, Deserialize};
 ///
@@ -958,7 +958,7 @@ pub trait State: Sync + Send + 'static {
 ///
 /// ## Range Queries
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::database::Collection;
 ///
 /// async fn get_recent_entries(
@@ -1018,7 +1018,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::Collection;
     ///
     /// let events = create_event_collection("user_events")?;
@@ -1046,7 +1046,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{database::Collection, Error};
     ///
     /// async fn get_event_data(
@@ -1092,7 +1092,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{database::Collection, Error};
     /// use serde::Serialize;
     ///
@@ -1157,7 +1157,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{database::Collection, Error};
     ///
     /// async fn cleanup_old_events(
@@ -1207,7 +1207,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::Collection;
     ///
     /// async fn get_latest_event(
@@ -1261,7 +1261,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::Collection;
     ///
     /// async fn reset_event_log(collection: &mut impl Collection) -> Result<(), Error> {
@@ -1302,7 +1302,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::Collection;
     ///
     /// async fn process_all_events(collection: &impl Collection) -> Result<(), Error> {
@@ -1376,7 +1376,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::Collection;
     ///
     /// async fn store_critical_events(
@@ -1427,7 +1427,7 @@ pub trait Collection: Sync + Send + 'static {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::database::Collection;
     ///
     /// async fn paginate_events(

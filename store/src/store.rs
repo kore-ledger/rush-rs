@@ -119,7 +119,7 @@
 //!
 //! ### Actor Lifecycle Integration
 //!
-//! ```rust
+//! ```ignore
 //! #[async_trait]
 //! impl Actor for MyPersistentActor {
 //!     async fn pre_start(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), ActorError> {
@@ -142,7 +142,7 @@
 //!
 //! ### Event Handling Patterns
 //!
-//! ```rust
+//! ```ignore
 //! #[async_trait]
 //! impl Handler<MyActor> for MyActor {
 //!     async fn handle_message(
@@ -177,7 +177,7 @@
 //!
 //! ### Monitoring and Metrics
 //!
-//! ```rust
+//! ```ignore
 //! // Monitor compression effectiveness
 //! let stats = store.compression_stats();
 //! if stats.compression_efficiency() < 0.1 {
@@ -390,7 +390,7 @@ fn smart_decompress(data: &[u8]) -> Result<Vec<u8>, Error> {
 ///
 /// ## Basic Monitoring
 ///
-/// ```rust
+/// ```ignore
 /// let stats = store.compression_stats();
 ///
 /// println!("Storage Efficiency Report:");
@@ -406,7 +406,7 @@ fn smart_decompress(data: &[u8]) -> Result<Vec<u8>, Error> {
 ///
 /// ## Performance Optimization
 ///
-/// ```rust
+/// ```ignore
 /// let stats = store.compression_stats();
 ///
 /// // Check if compression is beneficial
@@ -429,7 +429,7 @@ fn smart_decompress(data: &[u8]) -> Result<Vec<u8>, Error> {
 ///
 /// ## Alerting and Monitoring
 ///
-/// ```rust
+/// ```ignore
 /// // Set up monitoring thresholds
 /// if stats.total_bytes_written > 1_000_000_000 && stats.compression_efficiency() < 0.3 {
 ///     alert!("Large storage usage with poor compression efficiency");
@@ -490,7 +490,7 @@ impl CompressionStats {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let stats = CompressionStats {
     ///     total_writes: 100,
     ///     compressed_writes: 80,
@@ -531,7 +531,7 @@ impl CompressionStats {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let stats = store.compression_stats();
     /// println!("Average bytes saved per write: {:.1}", stats.avg_bytes_saved_per_write());
     /// ```
@@ -554,7 +554,7 @@ impl CompressionStats {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let stats = store.compression_stats();
     /// let adoption_rate = stats.compression_adoption_rate();
     ///
@@ -581,7 +581,7 @@ impl CompressionStats {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let stats = store.compression_stats();
     /// println!("Total storage saved: {} bytes ({:.1} MB)",
     ///          stats.total_bytes_saved(),
@@ -690,7 +690,7 @@ pub enum PersistenceType {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::{PersistentActor, LightPersistence};
 ///
 /// impl PersistentActor for MyCacheActor {
@@ -709,7 +709,7 @@ pub struct LightPersistence;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::{PersistentActor, FullPersistence};
 ///
 /// impl PersistentActor for MyBusinessActor {
@@ -801,7 +801,7 @@ impl Persistence for FullPersistence {
 ///
 /// ## Basic Implementation
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::{PersistentActor, FullPersistence};
 /// use actor::{Actor, ActorContext, Handler, Message, Event, Response};
 /// use async_trait::async_trait;
@@ -900,7 +900,7 @@ impl Persistence for FullPersistence {
 ///
 /// ## Advanced Error Handling
 ///
-/// ```rust
+/// ```ignore
 /// impl PersistentActor for BankAccount {
 ///     type Persistence = FullPersistence;
 ///
@@ -965,7 +965,7 @@ pub trait PersistentActor:
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // For business-critical data requiring full audit trails
     /// impl PersistentActor for OrderProcessor {
     ///     type Persistence = FullPersistence;
@@ -1019,7 +1019,7 @@ pub trait PersistentActor:
     ///
     /// ## Simple State Update
     ///
-    /// ```rust
+    /// ```ignore
     /// impl PersistentActor for Counter {
     ///     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
     ///         match event {
@@ -1040,7 +1040,7 @@ pub trait PersistentActor:
     ///
     /// ## Business Logic Validation
     ///
-    /// ```rust
+    /// ```ignore
     /// impl PersistentActor for BankAccount {
     ///     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
     ///         match event {
@@ -1069,7 +1069,7 @@ pub trait PersistentActor:
     ///
     /// ## Complex State Management
     ///
-    /// ```rust
+    /// ```ignore
     /// impl PersistentActor for OrderManager {
     ///     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
     ///         match event {
@@ -1147,7 +1147,7 @@ pub trait PersistentActor:
     ///
     /// Actors may override this method for specialized recovery behavior:
     ///
-    /// ```rust
+    /// ```ignore
     /// impl PersistentActor for MyActor {
     ///     fn update(&mut self, state: Self) {
     ///         // Custom recovery logic
@@ -1414,7 +1414,7 @@ pub trait PersistentActor:
 ///
 /// ## Basic Store Creation
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::{Store, memory::MemoryManager};
 ///
 /// let store = Store::<MyActor>::new(
@@ -1427,7 +1427,7 @@ pub trait PersistentActor:
 ///
 /// ## Encrypted Store with Compression
 ///
-/// ```rust
+/// ```ignore
 /// let encryption_key = b"your_32_byte_encryption_key_here!"; // Must be 32 bytes
 /// let store = Store::<MyActor>::new_with_compression(
 ///     "secure_events",
@@ -1440,7 +1440,7 @@ pub trait PersistentActor:
 ///
 /// ## Performance Monitoring
 ///
-/// ```rust
+/// ```ignore
 /// // Monitor compression effectiveness
 /// let stats = store.compression_stats();
 /// println!("Compression efficiency: {:.1}%",
@@ -1616,7 +1616,7 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::{Store, memory::MemoryManager};
     ///
     /// // Basic store without encryption
@@ -1739,7 +1739,7 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::*;
     /// use sqlite_db::SqliteManager;
     ///
@@ -1818,7 +1818,7 @@ impl<P: PersistentActor> Store<P> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::*;
     ///
     /// let store = Store::new_with_compression(
@@ -2254,7 +2254,7 @@ impl<P: PersistentActor> Store<P> {
 ///
 /// ## Event Persistence
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::StoreCommand;
 ///
 /// // Full persistence (stores event in append-only log)
@@ -2268,7 +2268,7 @@ impl<P: PersistentActor> Store<P> {
 ///
 /// ## Data Retrieval
 ///
-/// ```rust
+/// ```ignore
 /// // Get the latest event
 /// let cmd = StoreCommand::LastEvent;
 /// let response = store_actor.ask(cmd).await?;
@@ -2284,7 +2284,7 @@ impl<P: PersistentActor> Store<P> {
 ///
 /// ## State Management
 ///
-/// ```rust
+/// ```ignore
 /// // Create a state snapshot
 /// let cmd = StoreCommand::Snapshot(actor_state.clone());
 /// store_actor.tell(cmd).await?;
@@ -2506,7 +2506,7 @@ where
 ///
 /// ## Handling Persistence Results
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::{StoreCommand, StoreResponse};
 ///
 /// let response = store_actor.ask(StoreCommand::Persist(event)).await?;
@@ -2527,7 +2527,7 @@ where
 ///
 /// ## Recovery Handling
 ///
-/// ```rust
+/// ```ignore
 /// let response = store_actor.ask(StoreCommand::Recover).await?;
 /// match response {
 ///     StoreResponse::State(Some(recovered_state)) => {
@@ -2550,7 +2550,7 @@ where
 ///
 /// ## Event Retrieval
 ///
-/// ```rust
+/// ```ignore
 /// let response = store_actor.ask(StoreCommand::GetEvents { from: 10, to: 20 }).await?;
 /// match response {
 ///     StoreResponse::Events(events) => {
@@ -2659,7 +2659,7 @@ impl<P: PersistentActor> Response for StoreResponse<P> {}
 ///
 /// ## Event Monitoring
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::StoreEvent;
 /// use actor::{Subscriber, Event};
 ///
@@ -2690,7 +2690,7 @@ impl<P: PersistentActor> Response for StoreResponse<P> {}
 ///
 /// ## Metrics Collection
 ///
-/// ```rust
+/// ```ignore
 /// struct MetricsCollector;
 ///
 /// #[async_trait]

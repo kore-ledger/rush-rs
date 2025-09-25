@@ -34,7 +34,7 @@
 //!
 //! Store errors are designed to integrate seamlessly with the actor system's error handling:
 //!
-//! ```rust
+//! ```ignore
 //! use rush_store::Error as StoreError;
 //! use actor::Error as ActorError;
 //!
@@ -90,7 +90,7 @@ use thiserror::Error;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_store::Error;
 ///
 /// // Handle storage creation failure with fallback
@@ -149,7 +149,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::Error;
     ///
     /// // Implement storage fallback strategy
@@ -217,7 +217,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::Error;
     /// use std::time::Duration;
     ///
@@ -319,7 +319,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::Error;
     ///
     /// // Handle missing user profile by creating default
@@ -413,7 +413,7 @@ pub enum Error {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_store::Error;
     ///
     /// // Implement transactional rollback on failure

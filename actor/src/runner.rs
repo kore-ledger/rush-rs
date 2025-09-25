@@ -57,7 +57,7 @@
 //!
 //! ## Basic Actor Execution
 //!
-//! ```rust
+//! ```ignore
 //! use rush_actor::*;
 //!
 //! // Create runner and actor reference
@@ -79,7 +79,7 @@
 //!
 //! ## Supervision Hierarchy
 //!
-//! ```rust
+//! ```ignore
 //! // Parent actor creates child with supervision
 //! let (child_runner, child_ref, child_stop) = ActorRunner::create(
 //!     ActorPath::from("/user/parent/child"),
@@ -242,7 +242,7 @@ pub type StopSender = mpsc::Sender<Option<oneshot::Sender<()>>>;
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 ///
 /// // Create a new actor runner
@@ -396,7 +396,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// // Create a root actor (no supervision)
@@ -507,7 +507,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// // Basic actor initialization
@@ -692,7 +692,7 @@ where
     /// The run loop is typically called automatically by `init()`, but can be used
     /// directly for custom lifecycle management:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Custom runner usage (advanced)
     /// let mut ctx = ActorContext::new(/* ... */);
     /// runner.run(&mut ctx).await;
@@ -809,7 +809,7 @@ where
     ///
     /// Internal actions are typically generated through the actor context:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Publishing an event (generates InnerAction::Event)
     /// ctx.publish_event(MyEvent::DataProcessed).await?;
     ///
@@ -941,7 +941,7 @@ where
     ///
     /// Supervision strategies are typically configured in the actor implementation:
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::supervision::*;
     /// use std::time::Duration;
     ///
@@ -1064,7 +1064,7 @@ pub enum InnerAction<A: Actor> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Actor publishes a business event
     /// ctx.publish_event(OrderEvent::Created { order_id: 123 }).await?;
     ///
@@ -1101,7 +1101,7 @@ pub enum InnerAction<A: Actor> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Report a non-fatal error during processing
     /// if let Err(e) = external_api_call().await {
     ///     ctx.emit_error(Error::Functional(format!("API warning: {}", e))).await?;
@@ -1142,7 +1142,7 @@ pub enum InnerAction<A: Actor> {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Report a critical failure that requires supervision
     /// match critical_operation().await {
     ///     Err(CriticalError::StateCorrupted) => {

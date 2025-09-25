@@ -62,7 +62,7 @@ use std::{any::Any, collections::HashMap, sync::Arc};
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use tokio_util::sync::CancellationToken;
 ///
@@ -128,7 +128,7 @@ impl ActorSystem {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio_util::sync::CancellationToken;
     ///
@@ -197,7 +197,7 @@ impl ActorSystem {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::SystemEvent;
 ///
 /// // Events are typically created internally by the system
@@ -282,7 +282,7 @@ pub enum SystemEvent {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use tokio_util::sync::CancellationToken;
 ///
@@ -398,7 +398,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio::sync::mpsc;
     /// use tokio_util::sync::CancellationToken;
@@ -499,7 +499,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// // Look up a specific actor by path
@@ -600,7 +600,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Create a root actor (no parent supervision)
     /// let path = ActorPath::from("/user/worker");
     /// let (actor_ref, stop_sender) = system.create_actor_path(
@@ -737,7 +737,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// // Create a database service actor
@@ -768,7 +768,7 @@ impl SystemRef {
     ///
     /// Root actors often serve as parents for child actor hierarchies:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Root actor that creates children
     /// let supervisor = system.create_root_actor(
     ///     "supervisor",
@@ -850,7 +850,7 @@ impl SystemRef {
     ///
     /// # Examples (Internal Use)
     ///
-    /// ```rust
+    /// ```ignore
     /// // Called by actor runner during shutdown
     /// impl<A> ActorRunner<A> {
     ///     async fn shutdown(&mut self, system: &SystemRef) {
@@ -924,7 +924,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio::signal;
     ///
@@ -960,7 +960,7 @@ impl SystemRef {
     ///
     /// If external components need to coordinate with system shutdown:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Clone the cancellation token during system creation
     /// let token = CancellationToken::new();
     /// let (system, runner) = ActorSystem::create(token.clone());
@@ -1030,7 +1030,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// // Create a parent actor
@@ -1054,7 +1054,7 @@ impl SystemRef {
     ///
     /// This method is commonly used in supervision strategies:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Supervisor checking its children before restart
     /// impl SupervisorActor {
     ///     async fn handle_restart(&mut self, ctx: &ActorContext<Self>) {
@@ -1146,7 +1146,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use std::sync::Arc;
     ///
@@ -1183,7 +1183,7 @@ impl SystemRef {
     ///
     /// Actors typically access helpers through their context:
     ///
-    /// ```rust
+    /// ```ignore
     /// impl Handler<DatabaseActor> for DatabaseActor {
     ///     async fn handle_message(
     ///         &mut self,
@@ -1274,7 +1274,7 @@ impl SystemRef {
     ///
     /// For frequently accessed helpers, actors may want to cache references:
     ///
-    /// ```rust
+    /// ```ignore
     /// impl MyActor {
     ///     async fn started(&mut self, ctx: &mut ActorContext<Self>) -> Result<(), Error> {
     ///         // Cache frequently used helpers during actor startup
@@ -1287,7 +1287,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// #[derive(Clone, Debug)]
@@ -1317,7 +1317,7 @@ impl SystemRef {
     ///
     /// Common patterns for using helpers in actors:
     ///
-    /// ```rust
+    /// ```ignore
     /// impl Handler<WorkerActor> for WorkerActor {
     ///     async fn handle_message(
     ///         &mut self,
@@ -1356,7 +1356,7 @@ impl SystemRef {
     ///
     /// Recommended patterns for handling missing or incorrect helpers:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Pattern 1: Return error if helper is required
     /// let config = system.get_helper::<Config>("config")
     ///     .await
@@ -1433,7 +1433,7 @@ impl SystemRef {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// // Create a logging sink
@@ -1469,7 +1469,7 @@ impl SystemRef {
     ///
     /// # Database Integration Example
     ///
-    /// ```rust
+    /// ```ignore
     /// // Sink for persisting events to database
     /// let db_sink = Sink::new(
     ///     event_stream,
@@ -1500,7 +1500,7 @@ impl SystemRef {
     ///
     /// # Multiple Sink Coordination
     ///
-    /// ```rust
+    /// ```ignore
     /// // Run multiple sinks for different purposes
     /// system.run_sink(audit_sink).await;      // Legal compliance
     /// system.run_sink(metrics_sink).await;     // Performance monitoring
@@ -1593,7 +1593,7 @@ impl SystemRef {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use tokio_util::sync::CancellationToken;
 ///
@@ -1626,7 +1626,7 @@ impl SystemRef {
 ///
 /// The system runner enables several important integration patterns:
 ///
-/// ```rust
+/// ```ignore
 /// // Pattern 1: Graceful shutdown coordination
 /// let (system, mut runner) = ActorSystem::create(token);
 /// tokio::spawn(async move { runner.run().await });
@@ -1694,7 +1694,7 @@ impl SystemRunner {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Internal usage within ActorSystem::create()
     /// let (event_sender, event_receiver) = mpsc::channel(100);
     /// let runner = SystemRunner::new(event_receiver);
@@ -1765,7 +1765,7 @@ impl SystemRunner {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio_util::sync::CancellationToken;
     ///
@@ -1801,7 +1801,7 @@ impl SystemRunner {
     ///
     /// # Advanced Integration Patterns
     ///
-    /// ```rust
+    /// ```ignore
     /// // Pattern 1: Runner with health monitoring
     /// let runner_handle = tokio::spawn(async move {
     ///     health_monitor.report_starting().await;

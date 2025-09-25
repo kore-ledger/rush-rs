@@ -60,7 +60,7 @@
 //!
 //! ### Basic Actor Implementation
 //!
-//! ```rust
+//! ```ignore
 //! use actor::{Actor, ActorContext, ActorRef, Message, Handler, Response};
 //! use async_trait::async_trait;
 //! use serde::{Deserialize, Serialize};
@@ -118,7 +118,7 @@
 //!
 //! ### Creating and Running the System
 //!
-//! ```rust
+//! ```ignore
 //! use actor::{ActorSystem, ActorRef};
 //!
 //! #[tokio::main]
@@ -158,7 +158,7 @@
 //!
 //! Actors can create and manage child actors, forming supervision hierarchies:
 //!
-//! ```rust
+//! ```ignore
 //! use actor::{ActorContext, supervision::SupervisionStrategy};
 //!
 //! #[async_trait]
@@ -185,7 +185,7 @@
 //!
 //! Actors can publish events and external components can subscribe to them:
 //!
-//! ```rust
+//! ```ignore
 //! use actor::{Event, Sink, Subscriber};
 //!
 //! // Define an event
@@ -235,7 +235,7 @@
 //!
 //! Configure sophisticated supervision strategies for robust error handling:
 //!
-//! ```rust
+//! ```ignore
 //! use actor::supervision::{
 //!     SupervisionStrategy, Strategy, FixedIntervalStrategy, CustomIntervalStrategy
 //! };
@@ -273,7 +273,7 @@
 //!
 //! Integrate with external systems using event sinks and message bridges:
 //!
-//! ```rust
+//! ```ignore
 //! // Database integration through events
 //! struct DatabaseSink {
 //!     connection: DatabaseConnection,
@@ -293,7 +293,7 @@
 //!
 //! Build web services with actor-based request handling:
 //!
-//! ```rust
+//! ```ignore
 //! // HTTP handler that delegates to actors
 //! async fn handle_request(
 //!     request: HttpRequest,

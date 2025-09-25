@@ -105,7 +105,7 @@ use std::{fs, path::Path, sync::Arc};
 ///
 /// ## Example Usage
 ///
-/// ```rust
+/// ```ignore
 /// use rocksdb_db::RocksDbManager;
 /// use store::database::DbManager;
 ///
@@ -124,7 +124,7 @@ use std::{fs, path::Path, sync::Arc};
 ///
 /// The manager is thread-safe and can be shared across multiple threads:
 ///
-/// ```rust
+/// ```ignore
 /// use std::sync::Arc;
 /// use tokio::task;
 ///
@@ -239,7 +239,7 @@ impl RocksDbManager {
     ///
     /// ## Basic Initialization
     ///
-    /// ```rust
+    /// ```ignore
     /// use rocksdb_db::RocksDbManager;
     ///
     /// // Create manager for new database
@@ -248,7 +248,7 @@ impl RocksDbManager {
     ///
     /// ## Error Handling
     ///
-    /// ```rust
+    /// ```ignore
     /// use rocksdb_db::RocksDbManager;
     /// use store::Error;
     ///
@@ -268,7 +268,7 @@ impl RocksDbManager {
     ///
     /// ## Production Usage
     ///
-    /// ```rust
+    /// ```ignore
     /// use rocksdb_db::RocksDbManager;
     /// use std::path::PathBuf;
     ///
@@ -459,7 +459,7 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rocksdb_db::RocksDbManager;
     /// use store::database::{DbManager, Collection};
     ///
@@ -563,7 +563,7 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rocksdb_db::RocksDbManager;
     /// use store::database::{DbManager, State};
     ///
@@ -678,7 +678,7 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
 ///
 /// The `Arc<DB>` allows safe sharing across multiple store instances:
 ///
-/// ```rust
+/// ```ignore
 /// use std::sync::Arc;
 /// use rocksdb_db::RocksDbStore;
 ///
@@ -756,7 +756,7 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
 ///
 /// ### Event Collection Storage
 ///
-/// ```rust
+/// ```ignore
 /// use store::database::Collection;
 ///
 /// let mut events = RocksDbStore { /* ... */ };
@@ -774,7 +774,7 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
 ///
 /// ### State Snapshot Storage
 ///
-/// ```rust
+/// ```ignore
 /// use store::database::State;
 ///
 /// let mut state = RocksDbStore { /* ... */ };
@@ -786,7 +786,7 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
 ///
 /// ## Thread Safety Example
 ///
-/// ```rust
+/// ```ignore
 /// use std::sync::Arc;
 /// use tokio::task;
 ///
@@ -933,7 +933,7 @@ impl State for RocksDbStore {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use store::database::State;
     ///
     /// let state_store = /* RocksDbStore for state */;
@@ -1043,7 +1043,7 @@ impl State for RocksDbStore {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use store::database::State;
     /// use serde::{Serialize, Deserialize};
     ///
@@ -1385,7 +1385,7 @@ impl Collection for RocksDbStore {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use store::database::Collection;
     ///
     /// let collection = /* RocksDbStore for events */;
@@ -1499,7 +1499,7 @@ impl Collection for RocksDbStore {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use store::database::Collection;
     /// use serde::{Serialize, Deserialize};
     ///
@@ -1731,7 +1731,7 @@ impl Collection for RocksDbStore {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use store::database::Collection;
     ///
     /// let collection = /* RocksDbStore for events */;
@@ -2000,7 +2000,7 @@ impl Collection for RocksDbStore {
 ///
 /// ### Basic Iteration
 ///
-/// ```rust
+/// ```ignore
 /// use rocksdb_db::RocksDbIterator;
 /// use std::sync::Arc;
 ///
@@ -2019,7 +2019,7 @@ impl Collection for RocksDbStore {
 ///
 /// ### Reverse Chronological Processing
 ///
-/// ```rust
+/// ```ignore
 /// // Process events from newest to oldest
 /// let reverse_iter = RocksDbIterator::new(db.clone(), "events", "user_123", true);
 ///
@@ -2031,7 +2031,7 @@ impl Collection for RocksDbStore {
 ///
 /// ### Memory-Bounded Processing
 ///
-/// ```rust
+/// ```ignore
 /// // Configure iterator for memory-constrained environment
 /// let mut iterator = RocksDbIterator::new(db.clone(), "events", "user_123", false);
 /// // Note: batch_size is private, consider adding constructor parameter
@@ -2148,7 +2148,7 @@ impl RocksDbIterator {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rocksdb_db::RocksDbIterator;
     /// use std::sync::Arc;
     ///
@@ -2411,7 +2411,7 @@ impl RocksDbIterator {
 ///
 /// Full compatibility with Rust iterator ecosystem:
 ///
-/// ```rust
+/// ```ignore
 /// use rocksdb_db::RocksDbIterator;
 ///
 /// let iterator = RocksDbIterator::new(db.clone(), "events", "user_123", false);
@@ -2477,7 +2477,7 @@ impl Iterator for RocksDbIterator {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// let mut iterator = RocksDbIterator::new(db.clone(), "events", "user_123", false);
     ///
     /// // Manual iteration

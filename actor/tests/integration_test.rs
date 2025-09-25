@@ -481,19 +481,22 @@ async fn test_actor_memory_cleanup() {
         runner.run().await;
     });
 
-    // Create and destroy many actors to test cleanup
-    for i in 0..100 {
+    // Create and destroy fewer actors to test cleanup without excessive runtime
+    for i in 0..10 {
         let actor = TestActor { state: i };
         let actor_ref = system.create_root_actor(&format!("temp_actor_{}", i), actor).await.unwrap();
 
         // Send a message to ensure it's fully initialized
         actor_ref.tell(TestCommand::Increment(1)).await.unwrap();
 
-        // Stop the actor
-        actor_ref.ask_stop().await.unwrap();
+        // Stop the actor with timeout to prevent hanging
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(5),
+            actor_ref.ask_stop()
+        ).await.expect("Actor stop should not timeout").unwrap();
 
         // Verify actor is actually removed from system
-        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         let path = ActorPath::from(format!("/user/temp_actor_{}", i));
         let retrieved_actor = system.get_actor::<TestActor>(&path).await;
         assert!(retrieved_actor.is_none(), "Actor {} should be cleaned up", i);

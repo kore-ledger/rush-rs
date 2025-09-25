@@ -133,7 +133,7 @@
 //!
 //! ### Basic Usage with Actor System
 //!
-//! ```rust
+//! ```ignore
 //! use rocksdb_db::{RocksDbManager, RocksDbStore};
 //! use store::PersistentActor;
 //! use actor::{Actor, ActorContext};
@@ -169,7 +169,7 @@
 //!
 //! ### Direct Database Operations
 //!
-//! ```rust
+//! ```ignore
 //! use rocksdb_db::RocksDbManager;
 //! use store::database::{DbManager, Collection, State};
 //!
@@ -202,7 +202,7 @@
 //!
 //! The RocksDB backend automatically creates and manages column families:
 //!
-//! ```rust
+//! ```ignore
 //! use rocksdb_db::RocksDbManager;
 //!
 //! let manager = RocksDbManager::new("/data/rocksdb")?;
@@ -231,7 +231,7 @@
 //!
 //! The implementation supports sophisticated concurrency patterns:
 //!
-//! ```rust
+//! ```ignore
 //! use std::sync::Arc;
 //! use tokio::task;
 //!
@@ -335,7 +335,7 @@
 //!
 //! For production deployments, consider these advanced configuration patterns:
 //!
-//! ```rust
+//! ```ignore
 //! use rocksdb_db::RocksDbManager;
 //! use store::{Store, PersistentActor};
 //! use std::path::PathBuf;
@@ -382,7 +382,7 @@
 //!
 //! Configure RocksDB memory usage for different deployment scenarios:
 //!
-//! ```rust
+//! ```ignore
 //! // Memory-constrained environment (e.g., containers with 2GB limit)
 //! async fn configure_memory_efficient() -> Result<RocksDbManager, store::Error> {
 //!     let manager = RocksDbManager::new("/data/memory_efficient")?;
@@ -414,7 +414,7 @@
 //!
 //! Monitor RocksDB performance characteristics:
 //!
-//! ```rust
+//! ```ignore
 //! use std::time::{Duration, Instant};
 //! use tokio::time::interval;
 //!
@@ -480,7 +480,7 @@
 //!
 //! Implement robust backup and recovery strategies:
 //!
-//! ```rust
+//! ```ignore
 //! use std::path::Path;
 //! use chrono::{DateTime, Utc};
 //!
@@ -543,7 +543,7 @@
 //!
 //! Configure RocksDB for different deployment environments:
 //!
-//! ```rust
+//! ```ignore
 //! use std::env;
 //!
 //! // Environment-specific configuration

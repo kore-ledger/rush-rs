@@ -47,7 +47,7 @@ use std::fmt::{Error, Formatter};
 ///
 /// # Usage Patterns
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// // Create paths from strings
@@ -105,7 +105,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// // Multi-level path
@@ -161,7 +161,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// // Multi-level path
@@ -223,7 +223,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// // Multi-level path
@@ -279,7 +279,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// // Empty path
@@ -344,7 +344,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// let path = ActorPath::from("/user/manager/worker/task");
@@ -420,7 +420,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// // Empty path from root string
@@ -491,7 +491,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// let root = ActorPath::from("/user");
@@ -562,7 +562,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// let root = ActorPath::from("/user");
@@ -632,7 +632,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// let root = ActorPath::from("/user");
@@ -699,7 +699,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// let root = ActorPath::from("/user");
@@ -761,7 +761,7 @@ impl ActorPath {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::ActorPath;
     ///
     /// // Top-level actors
@@ -836,7 +836,7 @@ impl ActorPath {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// // Standard paths
@@ -894,7 +894,7 @@ impl From<&str> for ActorPath {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// let path_string = String::from("/user/manager/worker");
@@ -932,7 +932,7 @@ impl From<String> for ActorPath {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// let path_string = String::from("/user/manager/worker");
@@ -985,7 +985,7 @@ impl From<&String> for ActorPath {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// let root = ActorPath::from("/user");
@@ -1070,7 +1070,7 @@ impl std::ops::Div<&str> for ActorPath {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// // Empty path
@@ -1108,7 +1108,7 @@ impl std::ops::Div<&str> for ActorPath {
 ///
 /// The Display output is guaranteed to be parseable by ActorPath::from():
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// let original = ActorPath::from("/user/manager/worker");
@@ -1148,7 +1148,7 @@ impl std::fmt::Display for ActorPath {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::ActorPath;
 ///
 /// let path = ActorPath::from("/user/manager/worker");

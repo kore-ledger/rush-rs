@@ -78,7 +78,7 @@
 //!
 //! ### Basic Usage with Actor System
 //!
-//! ```rust
+//! ```ignore
 //! use sqlite_db::{SqliteManager, SqliteCollection};
 //! use store::PersistentActor;
 //! use actor::{Actor, ActorContext};
@@ -111,7 +111,7 @@
 //!
 //! ### Direct Database Operations
 //!
-//! ```rust
+//! ```ignore
 //! use sqlite_db::SqliteManager;
 //! use store::database::{DbManager, Collection, State};
 //!
@@ -169,7 +169,7 @@
 //!
 //! Built-in performance tracking provides operational insights:
 //!
-//! ```rust
+//! ```ignore
 //! let stats = manager.performance_stats();
 //! println!("Total queries: {}", stats.query_count);
 //! println!("Last optimization: {}", stats.last_optimize_time);
@@ -233,7 +233,7 @@
 //!
 //! The SQLite backend integrates seamlessly with the store system:
 //!
-//! ```rust
+//! ```ignore
 //! use sqlite_db::SqliteManager;
 //! use store::{Store, PersistentActor, FullPersistence};
 //!

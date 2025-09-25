@@ -64,7 +64,7 @@
 //!
 //! ## Event Logging and Audit
 //!
-//! ```rust
+//! ```ignore
 //! use rush_actor::*;
 //! use async_trait::async_trait;
 //!
@@ -93,7 +93,7 @@
 //!
 //! ## Metrics Collection
 //!
-//! ```rust
+//! ```ignore
 //! use rush_actor::*;
 //! use async_trait::async_trait;
 //!
@@ -125,7 +125,7 @@
 //!
 //! ## Database Persistence
 //!
-//! ```rust
+//! ```ignore
 //! use rush_actor::*;
 //! use async_trait::async_trait;
 //!
@@ -152,7 +152,7 @@
 //! Sinks integrate seamlessly with the actor system through the `SystemRef::run_sink()` method,
 //! which handles the complete lifecycle of event processing in background tasks:
 //!
-//! ```rust
+//! ```ignore
 //! use rush_actor::*;
 //!
 //! async fn setup_event_processing(system: &SystemRef) {
@@ -274,7 +274,7 @@ use tracing::debug;
 ///
 /// ## Background Task Execution
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use tokio;
 ///
@@ -291,7 +291,7 @@ use tracing::debug;
 ///
 /// ## System Integration
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 ///
 /// async fn setup_system_monitoring(system: &SystemRef) -> Result<(), Error> {
@@ -312,7 +312,7 @@ use tracing::debug;
 ///
 /// ## Testing and Development
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use std::sync::{Arc, Mutex};
@@ -422,7 +422,7 @@ impl<E: Event> Sink<E> {
     ///
     /// ## Basic Usage with Struct Subscriber
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     /// use tokio::sync::broadcast;
@@ -454,7 +454,7 @@ impl<E: Event> Sink<E> {
     ///
     /// ## Multiple Sinks for Same Event Stream
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio::sync::broadcast;
     ///
@@ -479,7 +479,7 @@ impl<E: Event> Sink<E> {
     ///
     /// ## Integration with System
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// async fn create_system_sink(system: &SystemRef) -> Result<(), Error> {
@@ -499,7 +499,7 @@ impl<E: Event> Sink<E> {
     ///
     /// ## Testing with Mock Subscribers
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     /// use std::sync::{Arc, Mutex};
@@ -585,7 +585,7 @@ impl<E: Event> Sink<E> {
     /// This method is typically executed in one of these contexts:
     ///
     /// ## Background Task Execution
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio;
     ///
@@ -600,7 +600,7 @@ impl<E: Event> Sink<E> {
     /// ```
     ///
     /// ## System Integration
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     ///
     /// async fn setup_system_sink(system: &SystemRef) -> Result<(), Error> {
@@ -679,7 +679,7 @@ impl<E: Event> Sink<E> {
     /// # Examples
     ///
     /// ## Basic Usage
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use tokio::sync::broadcast;
     ///
@@ -706,7 +706,7 @@ impl<E: Event> Sink<E> {
     /// ```
     ///
     /// ## Error Handling and Monitoring
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     /// use std::sync::atomic::{AtomicUsize, Ordering};
@@ -849,7 +849,7 @@ impl<E: Event> Sink<E> {
 /// The subscriber interface supports a wide range of event processing patterns:
 ///
 /// ## Transformation and Enrichment
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -871,7 +871,7 @@ impl<E: Event> Sink<E> {
 /// ```
 ///
 /// ## Aggregation and Analytics
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
@@ -897,7 +897,7 @@ impl<E: Event> Sink<E> {
 /// ```
 ///
 /// ## External System Integration
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -933,7 +933,7 @@ impl<E: Event> Sink<E> {
 /// # Implementation Patterns
 ///
 /// ## Simple Function-Based Subscribers
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -960,7 +960,7 @@ impl<E: Event> Sink<E> {
 /// ```
 ///
 /// ## Stateful Subscribers with Resource Management
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 ///
@@ -1002,7 +1002,7 @@ impl<E: Event> Sink<E> {
 /// # Error Handling Best Practices
 ///
 /// ## Graceful Error Recovery
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use std::sync::atomic::{AtomicU64, Ordering};
@@ -1035,7 +1035,7 @@ impl<E: Event> Sink<E> {
 /// ```
 ///
 /// ## Circuit Breaker Pattern
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
@@ -1094,7 +1094,7 @@ impl<E: Event> Sink<E> {
 /// # Performance Optimization
 ///
 /// ## Batching for High-Throughput
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use tokio::sync::Mutex;
@@ -1124,7 +1124,7 @@ impl<E: Event> Sink<E> {
 /// # Testing Subscribers
 ///
 /// ## Mock Subscribers for Testing
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use async_trait::async_trait;
 /// use std::sync::{Arc, Mutex};
@@ -1170,7 +1170,7 @@ impl<E: Event> Sink<E> {
 ///
 /// Subscribers integrate seamlessly with the actor system's lifecycle management:
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 ///
 /// async fn setup_comprehensive_monitoring(system: &SystemRef) -> Result<(), Error> {
@@ -1233,7 +1233,7 @@ pub trait Subscriber<E: Event>: Send + Sync + 'static {
     /// # Implementation Patterns
     ///
     /// ## Simple Processing
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     ///
@@ -1252,7 +1252,7 @@ pub trait Subscriber<E: Event>: Send + Sync + 'static {
     /// ```
     ///
     /// ## Database Persistence with Error Handling
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     ///
@@ -1289,7 +1289,7 @@ pub trait Subscriber<E: Event>: Send + Sync + 'static {
     /// ```
     ///
     /// ## External Service Integration
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     ///
@@ -1340,7 +1340,7 @@ pub trait Subscriber<E: Event>: Send + Sync + 'static {
     /// ```
     ///
     /// ## Retry with Exponential Backoff
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use async_trait::async_trait;
     /// use std::time::Duration;

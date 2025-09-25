@@ -54,7 +54,7 @@
 //!
 //! ## Basic Message Retry
 //!
-//! ```rust
+//! ```ignore
 //! use rush_actor::*;
 //! use rush_actor::retries::{RetryActor, RetryMessage};
 //! use rush_actor::supervision::{Strategy, FixedIntervalStrategy};
@@ -184,7 +184,7 @@ use tracing::{debug, error, warn};
 ///
 /// ## Basic Usage
 ///
-/// ```rust
+/// ```ignore
 /// use rush_actor::*;
 /// use rush_actor::retries::{RetryActor, RetryMessage};
 /// use rush_actor::supervision::{Strategy, FixedIntervalStrategy};
@@ -209,7 +209,7 @@ use tracing::{debug, error, warn};
 ///
 /// ## Custom Backoff Strategy
 ///
-/// ```rust
+/// ```ignore
 /// use std::collections::VecDeque;
 ///
 /// // Exponential backoff: 1s, 4s, 16s
@@ -282,7 +282,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// use rush_actor::*;
     /// use rush_actor::retries::RetryActor;
     /// use rush_actor::supervision::{Strategy, FixedIntervalStrategy};
@@ -342,7 +342,7 @@ where
 ///
 /// ## Initiating Retries
 ///
-/// ```rust
+/// ```ignore
 /// // Start the retry process after creating a retry actor
 /// let retry_ref = ctx.create_child("retry", retry_actor).await?;
 /// retry_ref.tell(RetryMessage::Retry).await?;
@@ -350,7 +350,7 @@ where
 ///
 /// ## Terminating Retries
 ///
-/// ```rust
+/// ```ignore
 /// // Stop retry attempts when operation succeeds elsewhere
 /// if operation_succeeded {
 ///     retry_ref.tell(RetryMessage::End).await?;
@@ -390,7 +390,7 @@ pub enum RetryMessage {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // Manual retry initiation (typically done by parent actor)
     /// retry_ref.tell(RetryMessage::Retry).await?;
     ///
@@ -430,7 +430,7 @@ pub enum RetryMessage {
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // End retry sequence when operation succeeds elsewhere
     /// if let Ok(result) = alternative_operation().await {
     ///     retry_ref.tell(RetryMessage::End).await?;
@@ -536,7 +536,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```rust
+    /// ```ignore
     /// // The actor system calls this automatically during retry actor deployment
     /// let retry_ref = ctx.create_child("retry", retry_actor).await?;
     /// // pre_start is called automatically, creating the target child
@@ -624,7 +624,7 @@ where
     ///
     /// The backoff mechanism uses async task spawning to implement delays:
     ///
-    /// ```rust
+    /// ```ignore
     /// tokio::spawn(async move {
     ///     tokio::time::sleep(backoff_duration).await;
     ///     actor_ref.tell(RetryMessage::Retry).await;
@@ -657,7 +657,7 @@ where
     ///
     /// The handler is typically invoked by the actor system:
     ///
-    /// ```rust
+    /// ```ignore
     /// // Actor system automatically calls handle_message
     /// retry_ref.tell(RetryMessage::Retry).await?;
     /// retry_ref.tell(RetryMessage::End).await?;

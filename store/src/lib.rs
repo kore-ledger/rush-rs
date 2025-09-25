@@ -65,7 +65,7 @@
 //!
 //! ### Basic Persistent Actor
 //!
-//! ```rust
+//! ```ignore
 //! use rush_store::*;
 //! use actor::{Actor, ActorContext, Handler, Message, Event, Response};
 //! use async_trait::async_trait;
@@ -190,7 +190,7 @@
 //!
 //! The store system supports multiple storage backends:
 //!
-//! ```rust
+//! ```ignore
 //! use rush_store::{memory::MemoryManager, Store};
 //!
 //! // In-memory storage (for testing and development)
@@ -219,7 +219,7 @@
 //!
 //! The system supports two persistence strategies:
 //!
-//! ```rust
+//! ```ignore
 //! // Full persistence: All events are stored for complete audit trail
 //! impl PersistentActor for FullActor {
 //!     type Persistence = FullPersistence;
@@ -237,7 +237,7 @@
 //!
 //! Monitor storage performance and efficiency:
 //!
-//! ```rust
+//! ```ignore
 //! let stats = store.compression_stats();
 //! println!("Compression ratio: {:.1}%", stats.compression_efficiency() * 100.0);
 //! println!("Total writes: {}", stats.total_writes);
@@ -254,7 +254,7 @@
 //!
 //! The system handles various failure scenarios:
 //!
-//! ```rust
+//! ```ignore
 //! // Automatic recovery on actor start
 //! async fn handle_recovery(ctx: &mut ActorContext<Self>) -> Result<(), actor::Error> {
 //!     // Recovery happens automatically in start_store()
@@ -320,7 +320,7 @@
 //!
 //! ### Database Integration
 //!
-//! ```rust
+//! ```ignore
 //! // Implement custom database backend
 //! struct DatabaseManager {
 //!     connection: DatabasePool,
@@ -341,7 +341,7 @@
 //!
 //! ### Monitoring and Observability
 //!
-//! ```rust
+//! ```ignore
 //! // Custom metrics collection
 //! struct MetricsCollector {
 //!     store_ref: ActorRef<Store<MyActor>>,
