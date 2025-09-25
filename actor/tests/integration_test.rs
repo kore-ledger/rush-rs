@@ -291,9 +291,8 @@ async fn test_actor_error() {
     let response = parent_ref.ask(TestCommand::GetState).await.unwrap();
     assert_eq!(response, TestResponse::State(50));
 
-    while let Some(event) = receiver.recv().await.ok() {
+    if let Ok(event) = receiver.recv().await {
         assert_eq!(event.0, 0);
-        break;
     }
     //system.stop_actor(&parent_ref.path()).await;
 }
@@ -322,9 +321,8 @@ async fn test_actor_fault() {
     let response = parent_ref.ask(TestCommand::GetState).await.unwrap();
     assert_eq!(response, TestResponse::State(110));
 
-    while let Some(event) = receiver.recv().await.ok() {
+    if let Ok(event) = receiver.recv().await {
         assert_eq!(event.0, 100);
-        break;
     }
 
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -465,7 +463,7 @@ async fn test_actor_path_injection() {
                 // Verify the path maintains the original content (no sanitization)
                 let path = ActorPath::from(malicious_path);
                 // The system doesn't sanitize paths, it just processes them as-is
-                println!("Path '{}' processed as: {}", malicious_path, path.to_string());
+                println!("Path '{}' processed as: {}", malicious_path, path);
             }
             Err(_) => {
                 // Some paths might fail due to system limitations, which is acceptable

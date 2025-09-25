@@ -14,21 +14,83 @@ use tracing::{debug, error};
 
 use std::marker::PhantomData;
 
-/// Message handler trait for actors messages.
+/// Message handler trait for processing actor messages.
+///
+/// This trait defines the interface for handling messages sent to actors.
+/// It provides the core message processing capability for the actor system.
+///
+/// # Type Parameters
+///
+/// * `A` - The actor type that this handler processes messages for
+///
+/// # Thread Safety
+///
+/// This trait requires `Send + Sync` to ensure handlers can be safely shared
+/// across threads in the concurrent actor system.
 #[async_trait]
 pub trait MessageHandler<A: Actor>: Send + Sync {
-    /// Handles the message.
+    /// Handles an incoming message for the specified actor.
+    ///
+    /// This method is called when a message needs to be processed by an actor.
+    /// The handler receives mutable access to the actor, allowing it to modify
+    /// the actor's state as needed.
+    ///
+    /// # Parameters
+    ///
+    /// * `actor` - Mutable reference to the actor that will process the message
+    /// * `ctx` - Mutable reference to the actor's execution context, providing
+    ///           access to system services like creating child actors, sending
+    ///           messages, and publishing events
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rush_actor::*;
+    /// use async_trait::async_trait;
+    ///
+    /// struct MyHandler;
+    ///
+    /// #[async_trait]
+    /// impl MessageHandler<MyActor> for MyHandler {
+    ///     async fn handle(&mut self, actor: &mut MyActor, ctx: &mut ActorContext<MyActor>) {
+    ///         // Process the message and update actor state
+    ///         actor.process_message();
+    ///
+    ///         // Use context for actor system operations
+    ///         ctx.publish_event(MyEvent::MessageProcessed).await.ok();
+    ///     }
+    /// }
+    /// ```
     async fn handle(&mut self, actor: &mut A, ctx: &mut ActorContext<A>);
 }
 
-/// Internal actor message.
+/// Internal actor message container.
+///
+/// This structure encapsulates a message sent to an actor along with metadata
+/// required for processing and response handling. It's used internally by the
+/// actor system to manage message delivery and response coordination.
+///
+/// # Type Parameters
+///
+/// * `A` - The target actor type that will receive and process this message
+///
+/// # Fields
+///
+/// * `message` - The actual message payload to be processed by the actor
+/// * `sender` - Path identifying the actor that sent this message (for logging/tracing)
+/// * `rsvp` - Optional response sender for ask-pattern messages that expect a reply
+/// * `_phantom_actor` - Phantom data to ensure proper type safety at compile time
 struct ActorMessage<A>
 where
     A: Actor + Handler<A>,
 {
+    /// The message payload that the actor will process
     message: A::Message,
+    /// Path of the actor that sent this message
     sender: ActorPath,
+    /// Optional channel sender for returning responses (used in ask pattern)
     rsvp: Option<oneshot::Sender<Result<A::Response, Error>>>,
+    /// Phantom data to maintain type safety
     _phantom_actor: PhantomData<A>,
 }
 
@@ -37,7 +99,41 @@ impl<A> ActorMessage<A>
 where
     A: Actor + Handler<A>,
 {
-    /// Creates internal actor message from message and optional reponse sender.
+    /// Creates a new internal actor message.
+    ///
+    /// This constructor builds an actor message container that will be used
+    /// internally by the actor system for message delivery and processing.
+    ///
+    /// # Parameters
+    ///
+    /// * `message` - The message payload that the target actor should process
+    /// * `sender` - The path of the actor sending this message (used for tracing)
+    /// * `rsvp` - Optional response channel sender for ask-pattern communication.
+    ///            If provided, the actor will send its response through this channel.
+    ///            If `None`, this is a tell-pattern message with no expected response.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `ActorMessage` instance ready for delivery to the target actor.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // Create a tell message (no response expected)
+    /// let tell_msg = ActorMessage::new(
+    ///     MyMessage::DoSomething,
+    ///     ActorPath::from("/user/sender"),
+    ///     None
+    /// );
+    ///
+    /// // Create an ask message (response expected)
+    /// let (tx, rx) = oneshot::channel();
+    /// let ask_msg = ActorMessage::new(
+    ///     MyMessage::Calculate(42),
+    ///     ActorPath::from("/user/sender"),
+    ///     Some(tx)
+    /// );
+    /// ```
     pub fn new(
         message: A::Message,
         sender: ActorPath,
@@ -173,7 +269,7 @@ mod tests {
     #[test]
     fn test_mailbox() {
         let (sender, receiver) = mailbox::<()>();
-        assert_eq!(sender.is_closed(), false);
-        assert_eq!(receiver.is_closed(), false);
+        assert!(!sender.is_closed());
+        assert!(!receiver.is_closed());
     }
 }
