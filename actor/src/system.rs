@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! # Actor system
 //!
@@ -21,17 +20,50 @@ use tracing::{debug, error};
 
 use std::{any::Any, collections::HashMap, sync::Arc};
 
-/// Actor system.
+/// Actor system factory.
+/// This is the main entry point for creating an actor system instance.
+/// The ActorSystem provides factory methods for initializing the system
+/// infrastructure including the SystemRef and SystemRunner.
 ///
 pub struct ActorSystem {}
 
 /// Default implementation for `ActorSystem`.
 impl ActorSystem {
-    /// Create a new actor system.
+    /// Creates a new actor system with its reference and runner.
+    /// The actor system manages the lifecycle of all actors and provides
+    /// the infrastructure for actor communication and supervision.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - CancellationToken for coordinated shutdown of the entire system.
     ///
     /// # Returns
     ///
-    /// Returns a tuple with the system reference and the system runner.
+    /// Returns a tuple containing:
+    /// - `SystemRef` - Cloneable reference for creating and managing actors.
+    /// - `SystemRunner` - Event loop that must be run to process system events.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tokio_util::sync::CancellationToken;
+    /// use actor::ActorSystem;
+    ///
+    /// let token = CancellationToken::new();
+    /// let (system, mut runner) = ActorSystem::create(token.clone());
+    ///
+    /// // Spawn the system runner
+    /// tokio::spawn(async move {
+    ///     runner.run().await;
+    /// });
+    ///
+    /// // Use system to create actors
+    /// // ...
+    ///
+    /// // Shutdown when done
+    /// token.cancel();
+    /// ```
+    ///
     pub fn create(token: CancellationToken) -> (SystemRef, SystemRunner) {
         let (event_sender, event_receiver) = mpsc::channel(100);
         let system = SystemRef::new(event_sender, token);
@@ -40,33 +72,65 @@ impl ActorSystem {
     }
 }
 
-/// System event.
+/// System-level events for coordinating actor system lifecycle.
+/// These events are used internally to manage system-wide operations.
 ///
 #[derive(Debug, Clone)]
 pub enum SystemEvent {
-    /// Stop the actor system.
+    /// Signals that the actor system should stop gracefully.
+    /// This triggers shutdown of all root actors and system cleanup.
     StopSystem,
 }
 
-/// System reference.
+/// Cloneable reference to the actor system.
+/// The SystemRef provides methods for creating, retrieving, and managing actors.
+/// Multiple SystemRef instances can be cloned and used concurrently across
+/// different parts of the application.
+///
+/// # Thread Safety
+///
+/// SystemRef is thread-safe and can be cloned and shared across tasks.
+/// All operations use internal locks for safe concurrent access.
 ///
 #[derive(Clone)]
 pub struct SystemRef {
-    /// The actors running in this actor system.
+    /// Registry of all actors in the system, indexed by their paths.
+    /// Uses type erasure (Any) to store heterogeneous actor types.
     actors:
         Arc<RwLock<HashMap<ActorPath, Box<dyn Any + Send + Sync + 'static>>>>,
 
-    /// The helpers for this actor system.
+    /// Registry of helper objects that can be shared across actors.
+    /// Helpers can be any type (database connections, configurations, etc.).
     helpers: Arc<RwLock<HashMap<String, Box<dyn Any + Send + Sync + 'static>>>>,
 
-    /// The root actor sender.
+    /// Stop senders for root-level actors to enable coordinated shutdown.
     root_senders: Arc<RwLock<Vec<StopSender>>>,
 
+    /// Cancellation token for system-wide shutdown coordination.
     token: CancellationToken
 }
 
 impl SystemRef {
-    /// Create system reference.
+    /// Creates a new system reference with shutdown coordination.
+    /// This method sets up the actor registry and spawns a task that
+    /// listens for cancellation signals to coordinate system shutdown.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_sender` - Channel for sending system events to the runner.
+    /// * `token` - Cancellation token that triggers system shutdown when cancelled.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new SystemRef instance.
+    ///
+    /// # Behavior
+    ///
+    /// Spawns a background task that:
+    /// - Waits for the cancellation token to be cancelled.
+    /// - Stops all root actors in order, waiting for each to confirm.
+    /// - Sends a StopSystem event to the runner to complete shutdown.
+    ///
     pub fn new(
         event_sender: mpsc::Sender<SystemEvent>,
         token: CancellationToken,
@@ -210,11 +274,33 @@ impl SystemRef {
         actors.remove(path);
     }
 
+    /// Initiates graceful shutdown of the entire actor system.
+    /// This cancels the system's cancellation token, which triggers
+    /// the shutdown sequence for all root actors.
+    ///
+    /// # Behavior
+    ///
+    /// - Cancels the system token.
+    /// - Triggers the shutdown task spawned in `new()`.
+    /// - Root actors are stopped in reverse order of creation.
+    /// - System runner receives StopSystem event when complete.
+    ///
     pub fn stop_system(&self) {
         self.token.cancel();
     }
 
-    /// Get the actor's children.
+    /// Retrieves all direct children of the specified actor.
+    /// This scans the actor registry for actors whose parent matches
+    /// the given path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path of the parent actor.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of ActorPath for all direct children.
+    ///
     pub async fn children(&self, path: &ActorPath) -> Vec<ActorPath> {
         let actors = self.actors.read().await;
         let mut children = vec![];
@@ -226,7 +312,26 @@ impl SystemRef {
         children
     }
 
-    /// Add a helper to the actor system.
+    /// Adds a helper object to the actor system.
+    /// Helpers are shared objects (like database pools, configurations, etc.)
+    /// that actors can retrieve by name. This enables dependency injection
+    /// for actors without tight coupling.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Unique identifier for this helper.
+    /// * `helper` - The helper object to store (must be Clone + Send + Sync).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// #[derive(Clone)]
+    /// struct DatabasePool { /* ... */ }
+    ///
+    /// let db_pool = DatabasePool::new();
+    /// system.add_helper("db_pool", db_pool).await;
+    /// ```
+    ///
     pub async fn add_helper<H>(&self, name: &str, helper: H)
     where
         H: Any + Send + Sync + Clone + 'static,
@@ -235,8 +340,24 @@ impl SystemRef {
         helpers.insert(name.to_owned(), Box::new(helper));
     }
 
-    /// Get a helper from the actor system.
-    /// If the helper does not exist, a None is returned.
+    /// Retrieves a helper object from the actor system.
+    /// Actors can use this to access shared resources like database
+    /// connections, configuration, or other services.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The identifier of the helper to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Returns Some(helper) if found and type matches, None otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let db_pool: Option<DatabasePool> = system.get_helper("db_pool").await;
+    /// ```
+    ///
     pub async fn get_helper<H>(&self, name: &str) -> Option<H>
     where
         H: Any + Send + Sync + Clone + 'static,
@@ -248,7 +369,20 @@ impl SystemRef {
             .cloned()
     }
 
-    /// Run a sink. The sink will be run in a separate task.
+    /// Spawns a sink to run in a separate task.
+    /// Sinks process events emitted by actors and run independently
+    /// in their own tasks for concurrent event processing.
+    ///
+    /// # Arguments
+    ///
+    /// * `sink` - The sink to run (contains subscriber and event receiver).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let sink = Sink::new(actor_ref.subscribe(), MySubscriber);
+    /// system.run_sink(sink).await;
+    /// ```
     ///
     pub async fn run_sink<E>(&self, mut sink: Sink<E>)
     where
@@ -260,19 +394,51 @@ impl SystemRef {
     }
 }
 
-/// System runner.
+/// System runner that processes system-wide events.
+/// The SystemRunner must be spawned in a task and run to process
+/// system lifecycle events like shutdown notifications.
+///
 pub struct SystemRunner {
-    /// The event receiver.
+    /// Receiver for system-wide events.
     event_receiver: mpsc::Receiver<SystemEvent>,
 }
 
 impl SystemRunner {
-    /// Create a new system runner.
+    /// Creates a new system runner with the given event receiver.
+    ///
+    /// # Arguments
+    ///
+    /// * `event_receiver` - Channel receiver for SystemEvent messages.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new SystemRunner instance.
+    ///
     pub(crate) fn new(event_receiver: mpsc::Receiver<SystemEvent>) -> Self {
         Self { event_receiver }
     }
 
-    /// Run the actor system.
+    /// Runs the system event loop.
+    /// This method blocks and processes system events until a StopSystem
+    /// event is received. Must be spawned in a separate task.
+    ///
+    /// # Behavior
+    ///
+    /// - Waits for system events on the event channel.
+    /// - Processes StopSystem event by logging and exiting the loop.
+    /// - Returns when the system is stopped.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let (system, mut runner) = ActorSystem::create(token);
+    ///
+    /// tokio::spawn(async move {
+    ///     runner.run().await;
+    ///     println!("System runner completed");
+    /// });
+    /// ```
+    ///
     pub async fn run(&mut self) {
         debug!("Running actor system...");
             tokio::select! {

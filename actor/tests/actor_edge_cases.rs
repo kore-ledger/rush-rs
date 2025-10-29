@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! Comprehensive edge case tests for Actor module to increase coverage
 use actor::{

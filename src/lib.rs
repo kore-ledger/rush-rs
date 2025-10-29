@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! Core library for the Rush framework.
 //! Provides the foundational components for building actor-based applications.

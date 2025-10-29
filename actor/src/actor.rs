@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! # Actor
 //!
@@ -81,7 +80,19 @@ where
         }
     }
 
-    /// Restart the actor.
+    /// Restarts the actor by calling its pre_restart method.
+    /// This method is invoked internally by the supervision system
+    /// when it decides to restart an actor after a failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `actor` - Mutable reference to the actor to be restarted.
+    /// * `error` - Optional error that caused the restart.
+    ///
+    /// # Returns
+    ///
+    /// Returns Ok(()) if the restart was successful, or an Error if it failed.
+    ///
     pub(crate) async fn restart(
         &mut self,
         actor: &mut A,
@@ -132,6 +143,18 @@ where
         self.system.get_actor(&self.path.parent()).await
     }
 
+    /// Stops all child actors in an orderly manner.
+    /// This method iterates over all child senders and sends them
+    /// a stop signal, waiting for confirmation from each one.
+    /// It is used internally during the parent actor's lifecycle.
+    ///
+    /// # Behavior
+    ///
+    /// - Extracts all child stop senders one by one (pop).
+    /// - For each child, creates a oneshot channel for confirmation.
+    /// - Sends the stop signal and waits for confirmation.
+    /// - If sending fails, continues with the next child.
+    ///
     pub(crate) async fn stop_childs(&mut self) {
         while let Some(sender) = self.child_senders.pop() {
             let (stop_sender, stop_receiver) = oneshot::channel();
@@ -143,10 +166,28 @@ where
         }
     }
 
+    /// Removes this actor from the actor system.
+    /// This method is invoked internally to clean up the actor's registration
+    /// in the ActorSystem, allowing it to be removed from the hierarchy.
+    ///
+    /// # Behavior
+    ///
+    /// Delegates the removal to the actor system using the actor's path.
+    ///
     pub(crate) async fn remove_actor(&self) {
         self.system.remove_actor(&self.path).await;
     }
 
+    /// Stops the actor by sending a stop signal.
+    /// This method is used internally to initiate the actor's shutdown process,
+    /// optionally notifying the caller when it completes.
+    ///
+    /// # Arguments
+    ///
+    /// * `sender` - Optional channel to receive stop confirmation.
+    ///              If Some, the actor will send a signal when finished.
+    ///              If None, the stop is fire-and-forget.
+    ///
     pub async fn stop(&self, sender: Option<oneshot::Sender<()>>) {
         debug!("Stopping actor from handle reference.");
 
@@ -287,28 +328,32 @@ where
         self.system.get_actor(&path).await
     }
 
-    /// Returns the error of the actor.
+    /// Returns the error of the actor if one is set.
+    /// This method is used internally to check if the actor is in an error state.
     ///
     /// # Returns
     ///
-    /// Returns the error of the actor.
+    /// Returns Some(Error) if an error is set, None otherwise.
     ///
     pub(crate) fn error(&self) -> Option<Error> {
         self.error.clone().or(None)
     }
 
-    /// Sets the error of the actor.
+    /// Sets the error state of the actor.
+    /// This method is used internally to mark the actor as being in an error state,
+    /// typically before emitting a fail signal to the parent.
     ///
     /// # Arguments
     ///
-    /// * `error` - The error of the actor.
+    /// * `error` - The error that occurred in the actor.
     ///
     pub(crate) fn set_error(&mut self, error: Error) {
         self.error = Some(error);
     }
 
-    /// Clean the error of the actor.
-    /// This is used to clean the error of the actor.
+    /// Clears the error state of the actor.
+    /// This method is used internally to reset the actor's error state,
+    /// typically after a successful restart or recovery.
     ///
     pub(crate) fn clean_error(&mut self) {
         self.error = None;
@@ -669,6 +714,15 @@ where
         }
     }
 
+    /// Stops the actor without waiting for confirmation (fire-and-forget).
+    /// This is a non-blocking alternative to `ask_stop()` that doesn't wait
+    /// for the actor to confirm its shutdown.
+    ///
+    /// # Behavior
+    ///
+    /// Sends a stop signal with no response channel, allowing the caller to
+    /// continue immediately without waiting for the actor to complete its shutdown.
+    ///
     pub async fn tell_stop(&self) {
         debug!("Stopping actor from handle reference.");
 

@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! # SQLite database backend.
 //!
@@ -19,14 +18,41 @@ use tracing::info;
 use std::sync::{Arc, Mutex};
 use std::{fs, path::Path};
 
-/// SQLite database manager.
+/// SQLite database manager for persistent actor storage.
+/// Manages SQLite database connections and provides factory methods
+/// for creating collections (event storage) and state storage (snapshots).
+///
+/// # Storage Model
+///
+/// - **Collections**: SQLite tables with (prefix, sn, value) schema
+/// - **State**: SQLite tables with (prefix, value) schema
+/// - **Connection**: Thread-safe shared connection using Arc<Mutex<Connection>>
+///
 #[derive(Clone)]
 pub struct SqliteManager {
+    /// Thread-safe shared SQLite connection.
     conn: Arc<Mutex<Connection>>,
 }
 
 impl SqliteManager {
-    /// Create a new SQLite database manager.
+    /// Creates a new SQLite database manager.
+    /// Opens or creates a SQLite database file at the specified path.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Directory path where the database file will be created.
+    ///            The database file will be named "database.db" within this directory.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new SqliteManager instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns Error::CreateStore if:
+    /// - The directory cannot be created
+    /// - The SQLite connection cannot be opened
+    ///
     pub fn new(path: &str) -> Result<Self, Error> {
         info!("Creating SQLite database manager");
         if !Path::new(&path).exists() {
@@ -98,15 +124,41 @@ impl DbManager<SqliteCollection, SqliteCollection> for SqliteManager {
     }
 }
 
-/// SQLite collection
+/// SQLite collection that implements both Collection and State traits.
+/// Stores key-value pairs in a SQLite table with prefix-based namespacing.
+///
+/// # Schema
+///
+/// **For Collections**: (prefix TEXT, sn TEXT, value BLOB, PRIMARY KEY (prefix, sn))
+/// **For State**: (prefix TEXT, value BLOB, PRIMARY KEY (prefix))
+///
+/// where:
+/// - `prefix` is the actor's namespace identifier
+/// - `sn` is the sequence number (for events)
+/// - `value` is the serialized data
+///
 pub struct SqliteCollection {
+    /// Shared SQLite connection.
     conn: Arc<Mutex<Connection>>,
+    /// Table name in the database.
     table: String,
+    /// Prefix for filtering rows (actor namespace).
     prefix: String,
 }
 
 impl SqliteCollection {
-    /// Create a new SQLite collection.
+    /// Creates a new SQLite collection.
+    ///
+    /// # Arguments
+    ///
+    /// * `conn` - Shared SQLite connection.
+    /// * `table` - Name of the table in the database.
+    /// * `prefix` - Prefix for namespacing this collection's data.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new SqliteCollection instance.
+    ///
     pub fn new(
         conn: Arc<Mutex<Connection>>,
         table: &str,

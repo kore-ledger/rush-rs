@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! Store manager
 
@@ -7,62 +6,154 @@ use crate::error::Error;
 
 use tracing::debug;
 
-/// A trait representing a database manager to create collections
+/// A trait representing a database manager that creates collections and state storage.
+/// Implementations of this trait provide the factory methods for creating
+/// persistent storage backends used by actors for event sourcing and state snapshots.
+///
+/// # Type Parameters
+///
+/// * `C` - The collection type that stores key-value pairs (events).
+/// * `S` - The state type that stores single values (snapshots).
+///
 pub trait DbManager<C, S>: Sync + Send + Clone
 where
     C: Collection + 'static,
     S: State + 'static,
 {
-    /// Create collection.
+    /// Creates a new collection for storing key-value pairs (typically events).
+    /// Collections are used for event sourcing where multiple events
+    /// are stored with unique keys (usually sequence numbers).
     ///
     /// # Arguments
     ///
-    /// - name: The name of the collection.
-    /// - prefix: The prefix to filter the values by.
+    /// * `name` - The name of the collection (e.g., table name, column family).
+    /// * `prefix` - A prefix for filtering/namespacing values within the collection.
     ///
     /// # Returns
     ///
-    /// The collection.
+    /// Returns a collection instance if successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the collection could not be created.
     ///
     fn create_collection(&self, name: &str, prefix: &str) -> Result<C, Error>;
 
-    fn create_state(&self, name: &str, prefix: &str) -> Result<S, Error>;
-
-    /// Stop manager.
+    /// Creates a new state storage for storing single values (typically snapshots).
+    /// State storage is used for persisting actor state snapshots,
+    /// where only the latest value matters.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the state storage (e.g., table name, column family).
+    /// * `prefix` - A prefix for filtering/namespacing the state value.
     ///
     /// # Returns
     ///
-    /// An error if the operation failed.
+    /// Returns a state storage instance if successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the state storage could not be created.
+    ///
+    fn create_state(&self, name: &str, prefix: &str) -> Result<S, Error>;
+
+    /// Stops the database manager and performs cleanup.
+    /// Default implementation does nothing. Override this to implement
+    /// connection closing, flushing, or other cleanup operations.
+    ///
+    /// # Returns
+    ///
+    /// Returns Ok(()) if cleanup was successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if cleanup failed.
     ///
     fn stop(self) -> Result<(), Error> {
         Ok(())
     }
 }
 
+/// Trait for storing a single state value (typically actor snapshots).
+/// State storage maintains only the most recent value, unlike Collections
+/// which store multiple key-value pairs. This is used for persisting
+/// actor state snapshots in event sourcing patterns.
+///
 pub trait State: Sync + Send + 'static {
-    /// Retrieve the name of the collection.
+    /// Retrieves the name of this state storage.
     ///
     /// # Returns
-    ///     
-    /// The name of the collection.
+    ///
+    /// The name identifier of this state storage.
     ///
     fn name(&self) -> &str;
 
-    fn get(&self) -> Result<Vec<u8>, Error>;
-
-    fn put(&mut self, data: &[u8]) -> Result<(), Error>;
-
-    fn del(&mut self) -> Result<(), Error>;
-
-    /// Removes all values from the collection.
+    /// Retrieves the current state value.
     ///
     /// # Returns
     ///
-    /// An error if the operation failed.
+    /// The serialized state data as bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns Error::EntryNotFound if no state has been stored yet.
+    ///
+    fn get(&self) -> Result<Vec<u8>, Error>;
+
+    /// Stores or updates the state value.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The serialized state data to store.
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if the state was successfully stored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the storage operation failed.
+    ///
+    fn put(&mut self, data: &[u8]) -> Result<(), Error>;
+
+    /// Deletes the current state value.
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if the state was successfully deleted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the delete operation failed.
+    ///
+    fn del(&mut self) -> Result<(), Error>;
+
+    /// Removes all data from the state storage.
+    /// This is equivalent to del() but provides semantic clarity
+    /// for complete cleanup operations.
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if the purge was successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the purge operation failed.
     ///
     fn purge(&mut self) -> Result<(), Error>;
 
-    /// Flush collection.
+    /// Flushes any pending writes to persistent storage.
+    /// Default implementation does nothing. Override this for databases
+    /// that buffer writes.
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if the flush was successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the flush operation failed.
     ///
     fn flush(&self) -> Result<(), Error> {
         Ok(())

@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! # Store module.
 //!
@@ -35,19 +34,33 @@ use tracing::{debug, error};
 
 use std::{fmt::Debug, marker::PhantomData};
 
-/// Nonce size.
+/// Nonce size for ChaCha20-Poly1305 encryption.
 const NONCE_SIZE: usize = 12;
 
+/// Defines the persistence strategy for an actor.
+/// This determines how events and state are stored.
 #[derive(Debug, Clone)]
 pub enum PersistenceType {
+    /// Light persistence: Stores each event along with the current state snapshot.
+    /// Faster recovery but uses more storage space.
     Light,
+    /// Full persistence: Stores only events, state is reconstructed by replaying them.
+    /// Uses less storage but slower recovery due to event replay.
     Full,
 }
 
+/// Marker type for light persistence strategy.
+/// Use this when you want fast recovery and don't mind larger storage footprint.
 pub struct LightPersistence;
+
+/// Marker type for full event sourcing strategy.
+/// Use this for complete audit trail and smaller storage footprint.
 pub struct FullPersistence;
 
+/// Trait for defining persistence strategy at the type level.
+/// Implement this on your persistence marker types.
 pub trait Persistence {
+    /// Returns the persistence type for this strategy.
     fn get_persistence() -> PersistenceType;
 }
 
@@ -63,53 +76,125 @@ impl Persistence for FullPersistence {
     }
 }
 
-/// A trait representing a persistent actor.
+/// Trait for actors that persist their state using event sourcing.
+/// PersistentActor extends the Actor trait with methods for persisting events,
+/// snapshotting state, and recovering from storage.
+///
+/// # Event Sourcing Pattern
+///
+/// This trait implements the event sourcing pattern where:
+/// 1. Events represent state changes and are persisted immutably.
+/// 2. Actor state is derived by applying events in sequence.
+/// 3. Snapshots can be taken to speed up recovery.
+///
+/// # Type Requirements
+///
+/// Implementing types must be:
+/// - Cloneable (for state snapshots)
+/// - Serializable (for persistence)
+/// - Debuggable (for logging)
+///
+/// # Example
+///
+/// ```
+/// #[derive(Clone, Debug, Serialize, Deserialize)]
+/// struct BankAccount {
+///     balance: i64,
+/// }
+///
+/// #[async_trait]
+/// impl PersistentActor for BankAccount {
+///     type Persistence = FullPersistence;
+///
+///     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
+///         match event {
+///             AccountEvent::Deposited(amount) => {
+///                 self.balance += amount;
+///                 Ok(())
+///             }
+///             // ... other events
+///         }
+///     }
+/// }
+/// ```
+///
 #[async_trait]
 pub trait PersistentActor:
     Actor + Handler<Self> + Debug + Clone + Serialize + DeserializeOwned
 {
+    /// The persistence strategy type (Light or Full).
     type Persistence: Persistence;
 
-    /// Apply an event to the actor state
+    /// Applies an event to the actor's state.
+    /// This method should be deterministic - applying the same event
+    /// to the same state should always produce the same result.
     ///
     /// # Arguments
     ///
-    /// - event: The event to apply.
-    ///
-    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError>;
-
-    /// Recover the state.
-    ///
-    /// # Arguments
-    ///
-    /// - state: The recovered state.
+    /// * `event` - The event to apply to the actor's state.
     ///
     /// # Returns
     ///
-    /// The result of the operation.
+    /// Ok(()) if the event was applied successfully.
     ///
     /// # Errors
     ///
-    /// An error if the operation failed.
+    /// Returns an error if the event cannot be applied (e.g., invalid state transition).
+    ///
+    /// # Important
+    ///
+    /// This method should NOT persist the event - that's handled by the `persist()` method.
+    /// This only updates the in-memory state.
+    ///
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError>;
+
+    /// Updates the actor's state by replacing it with a recovered state.
+    /// This is called during recovery to restore the actor from a snapshot.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - The recovered state to restore.
+    ///
+    /// # Default Behavior
+    ///
+    /// The default implementation simply replaces the current state.
+    /// Override this if you need custom recovery logic.
     ///
     fn update(&mut self, state: Self) {
         *self = state;
     }
 
-    /// Persist an event.
+    /// Persists an event by applying it to state and storing it in the database.
+    /// This is the main method for persisting state changes in event sourcing.
+    ///
+    /// # Process
+    ///
+    /// 1. Retrieves the Store child actor
+    /// 2. Creates a backup of the current state
+    /// 3. Applies the event to the state
+    /// 4. Persists the event (and possibly state) based on persistence type
+    /// 5. Rolls back state if persistence fails
     ///
     /// # Arguments
     ///
-    /// - event: The event to persist.
-    /// - store: The store actor.
+    /// * `event` - The event to persist.
+    /// * `ctx` - The actor context (used to access the store child actor).
     ///
     /// # Returns
     ///
-    /// The result of the operation.
+    /// Ok(()) if the event was applied and persisted successfully.
     ///
     /// # Errors
     ///
-    /// An error if the operation failed.
+    /// Returns ActorError::Store if:
+    /// - The store actor cannot be accessed
+    /// - The event application fails
+    /// - The persistence operation fails
+    ///
+    /// # Persistence Behavior
+    ///
+    /// - **Light**: Persists both the event and current state snapshot
+    /// - **Full**: Persists only the event
     ///
     async fn persist(
         &mut self,
@@ -266,22 +351,36 @@ pub trait PersistentActor:
     }
 }
 
-/// Store actor.
+/// Store actor that manages persistent storage for a PersistentActor.
+/// The Store handles event persistence, state snapshots, and recovery.
+/// It operates as a child actor of the persistent actor it serves.
+///
+/// # Storage Model
+///
+/// - **Events**: Stored in a Collection with sequence numbers as keys
+/// - **Snapshots**: Stored in State storage (single value, updated on each snapshot)
+/// - **Encryption**: Optional ChaCha20-Poly1305 encryption for at-rest data
+///
+/// # Type Parameters
+///
+/// * `P` - The PersistentActor type this store manages
+///
 pub struct Store<P>
 where
     P: PersistentActor,
 {
-    /// The event counter index.
+    /// Current event sequence number (auto-incrementing).
     event_counter: u64,
-    /// The state counter index.
+    /// Current state version number (for snapshots).
     state_counter: u64,
-    /// The events collection.
+    /// Collection for storing events with sequence numbers as keys.
     events: Box<dyn Collection>,
-    /// The states collection.
+    /// Storage for the latest state snapshot.
     states: Box<dyn State>,
-    /// Key box that encrypts contents.
+    /// Encrypted password for data encryption (ChaCha20-Poly1305).
+    /// If None, data is stored unencrypted.
     key_box: Option<EncryptedMem>,
-    /// The phantom actor.
+    /// Phantom data to associate with the PersistentActor type.
     _phantom: PhantomData<P>,
 }
 

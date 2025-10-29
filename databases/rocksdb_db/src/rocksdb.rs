@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: Apache-2.0
+
 
 //! RocksDB store implementation.
 //!
@@ -16,19 +15,49 @@ use tracing::info;
 
 use std::{fs, path::Path, sync::Arc};
 
-/// RocksDb manager.
+/// RocksDB database manager for persistent actor storage.
+/// Manages RocksDB instances and provides factory methods for creating
+/// column families for event storage and state snapshots.
+///
+/// # Storage Model
+///
+/// - **Collections**: RocksDB column families for event storage
+/// - **State**: RocksDB column families for state snapshots
+/// - **Connection**: Thread-safe shared DB instance using Arc<DB>
+/// - **Column Families**: Separate namespaces for different actors
+///
 #[derive(Clone)]
 pub struct RocksDbManager {
+    /// RocksDB configuration options.
     opts: Options,
+    /// Thread-safe shared RocksDB instance.
     db: Arc<DB>,
 }
 
 impl RocksDbManager {
-    /// Create a new RocksDb manager.
+    /// Creates a new RocksDB database manager.
+    /// Opens or creates a RocksDB database at the specified path,
+    /// loading all existing column families.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Directory path where the RocksDB database will be created.
     ///
     /// # Returns
     ///
-    /// The RocksDb manager.
+    /// Returns a new RocksDbManager instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns Error::CreateStore if:
+    /// - The directory cannot be created
+    /// - The RocksDB database cannot be opened
+    ///
+    /// # Behavior
+    ///
+    /// - Creates the directory if it doesn't exist
+    /// - Lists and opens all existing column families
+    /// - Enables "create_if_missing" option
     ///
     pub fn new(path: &str) -> Result<Self, Error> {
         info!("Creating RockDB database manager");
@@ -105,10 +134,25 @@ impl DbManager<RocksDbStore, RocksDbStore> for RocksDbManager {
     }
 }
 
-/// RocksDb store.
+/// RocksDB store that implements both Collection and State traits.
+/// Stores key-value pairs in a RocksDB column family with prefix-based keys.
+///
+/// # Storage Layout
+///
+/// - **Column Family**: Separate namespace identified by `name`
+/// - **Keys**: Prefixed with actor identifier for isolation
+/// - **Values**: Raw bytes (serialized data)
+///
+/// # Thread Safety
+///
+/// Uses Arc<DB> for safe concurrent access across multiple stores.
+///
 pub struct RocksDbStore {
+    /// Column family name.
     name: String,
+    /// Prefix for keys (actor namespace).
     prefix: String,
+    /// Shared RocksDB instance.
     store: Arc<DB>,
 }
 
