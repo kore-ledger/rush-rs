@@ -40,24 +40,6 @@ impl<E: Event> Sink<E> {
     ///
     /// Returns a new Sink instance ready to be run.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// use actor::{Sink, Subscriber, Event};
-    /// use async_trait::async_trait;
-    ///
-    /// struct MySubscriber;
-    ///
-    /// #[async_trait]
-    /// impl Subscriber<MyEvent> for MySubscriber {
-    ///     async fn notify(&self, event: MyEvent) {
-    ///         // Process event
-    ///     }
-    /// }
-    ///
-    /// let sink = Sink::new(event_receiver, MySubscriber);
-    /// ```
-    ///
     pub fn new(
         event_receiver: EventReceiver<E>,
         subscriber: impl Subscriber<E>,
@@ -78,14 +60,6 @@ impl<E: Event> Sink<E> {
     /// - Notifies the subscriber of each event.
     /// - Handles lagged events by catching up (skips missed events).
     /// - Exits when the event channel is closed.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// tokio::spawn(async move {
-    ///     sink.run().await;
-    /// });
-    /// ```
     ///
     pub async fn run(&mut self) {
         loop {
@@ -128,22 +102,6 @@ pub trait Subscriber<E: Event>: Send + Sync + 'static {
     /// # Arguments
     ///
     /// * `event` - The event to process.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use async_trait::async_trait;
-    /// use actor::{Subscriber, Event};
-    ///
-    /// struct LoggingSubscriber;
-    ///
-    /// #[async_trait]
-    /// impl Subscriber<MyEvent> for LoggingSubscriber {
-    ///     async fn notify(&self, event: MyEvent) {
-    ///         println!("Received event: {:?}", event);
-    ///     }
-    /// }
-    /// ```
     ///
     async fn notify(&self, event: E);
 }

@@ -157,16 +157,6 @@ impl FixedIntervalStrategy {
     ///
     /// Returns a new FixedIntervalStrategy instance.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::time::Duration;
-    /// use actor::supervision::FixedIntervalStrategy;
-    ///
-    /// let strategy = FixedIntervalStrategy::new(3, Duration::from_secs(5));
-    /// // Will retry up to 3 times with 5 seconds between each attempt
-    /// ```
-    ///
     pub fn new(max_retries: usize, duration: Duration) -> Self {
         FixedIntervalStrategy {
             max_retries,
@@ -197,22 +187,10 @@ impl RetryStrategy for FixedIntervalStrategy {
 /// control over retry timing, such as exponential backoff with jitter or
 /// adapting delays based on the type of failure.
 ///
-/// # Example
+/// # Usage
 ///
-/// ```
-/// use std::time::Duration;
-/// use std::collections::VecDeque;
-/// use actor::supervision::CustomIntervalStrategy;
-///
-/// // Exponential backoff: 1s, 2s, 4s, 8s
-/// let durations = VecDeque::from([
-///     Duration::from_secs(1),
-///     Duration::from_secs(2),
-///     Duration::from_secs(4),
-///     Duration::from_secs(8),
-/// ]);
-/// let strategy = CustomIntervalStrategy::new(durations);
-/// ```
+/// Allows implementing exponential backoff, fibonacci sequences, or any
+/// custom progression by providing a VecDeque of Duration values.
 ///
 #[derive(Debug, Default, Clone)]
 pub struct CustomIntervalStrategy {

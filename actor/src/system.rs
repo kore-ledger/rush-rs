@@ -43,26 +43,11 @@ impl ActorSystem {
     /// - `SystemRef` - Cloneable reference for creating and managing actors.
     /// - `SystemRunner` - Event loop that must be run to process system events.
     ///
-    /// # Example
+    /// # Usage
     ///
-    /// ```
-    /// use tokio_util::sync::CancellationToken;
-    /// use actor::ActorSystem;
-    ///
-    /// let token = CancellationToken::new();
-    /// let (system, mut runner) = ActorSystem::create(token.clone());
-    ///
-    /// // Spawn the system runner
-    /// tokio::spawn(async move {
-    ///     runner.run().await;
-    /// });
-    ///
-    /// // Use system to create actors
-    /// // ...
-    ///
-    /// // Shutdown when done
-    /// token.cancel();
-    /// ```
+    /// The system runner should be spawned in a separate task and the system
+    /// reference can be used to create and manage actors. Cancel the token
+    /// to trigger graceful shutdown.
     ///
     pub fn create(token: CancellationToken) -> (SystemRef, SystemRunner) {
         let (event_sender, event_receiver) = mpsc::channel(100);
@@ -322,16 +307,6 @@ impl SystemRef {
     /// * `name` - Unique identifier for this helper.
     /// * `helper` - The helper object to store (must be Clone + Send + Sync).
     ///
-    /// # Example
-    ///
-    /// ```
-    /// #[derive(Clone)]
-    /// struct DatabasePool { /* ... */ }
-    ///
-    /// let db_pool = DatabasePool::new();
-    /// system.add_helper("db_pool", db_pool).await;
-    /// ```
-    ///
     pub async fn add_helper<H>(&self, name: &str, helper: H)
     where
         H: Any + Send + Sync + Clone + 'static,
@@ -352,12 +327,6 @@ impl SystemRef {
     ///
     /// Returns Some(helper) if found and type matches, None otherwise.
     ///
-    /// # Example
-    ///
-    /// ```
-    /// let db_pool: Option<DatabasePool> = system.get_helper("db_pool").await;
-    /// ```
-    ///
     pub async fn get_helper<H>(&self, name: &str) -> Option<H>
     where
         H: Any + Send + Sync + Clone + 'static,
@@ -376,13 +345,6 @@ impl SystemRef {
     /// # Arguments
     ///
     /// * `sink` - The sink to run (contains subscriber and event receiver).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let sink = Sink::new(actor_ref.subscribe(), MySubscriber);
-    /// system.run_sink(sink).await;
-    /// ```
     ///
     pub async fn run_sink<E>(&self, mut sink: Sink<E>)
     where
@@ -427,17 +389,6 @@ impl SystemRunner {
     /// - Waits for system events on the event channel.
     /// - Processes StopSystem event by logging and exiting the loop.
     /// - Returns when the system is stopped.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let (system, mut runner) = ActorSystem::create(token);
-    ///
-    /// tokio::spawn(async move {
-    ///     runner.run().await;
-    ///     println!("System runner completed");
-    /// });
-    /// ```
     ///
     pub async fn run(&mut self) {
         debug!("Running actor system...");

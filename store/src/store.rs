@@ -94,29 +94,11 @@ impl Persistence for FullPersistence {
 /// - Serializable (for persistence)
 /// - Debuggable (for logging)
 ///
-/// # Example
+/// # Usage
 ///
-/// ```
-/// #[derive(Clone, Debug, Serialize, Deserialize)]
-/// struct BankAccount {
-///     balance: i64,
-/// }
-///
-/// #[async_trait]
-/// impl PersistentActor for BankAccount {
-///     type Persistence = FullPersistence;
-///
-///     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
-///         match event {
-///             AccountEvent::Deposited(amount) => {
-///                 self.balance += amount;
-///                 Ok(())
-///             }
-///             // ... other events
-///         }
-///     }
-/// }
-/// ```
+/// Implementing actors should define how events modify state in the apply()
+/// method, and choose either Light or Full persistence strategy based on
+/// recovery speed vs storage requirements tradeoffs.
 ///
 #[async_trait]
 pub trait PersistentActor:
